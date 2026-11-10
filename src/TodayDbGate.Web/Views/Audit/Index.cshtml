@@ -1,0 +1,118 @@
+@model AuditIndexModel
+@{
+    ViewData["Title"] = "Audit log";
+    var s = Model.Stats;
+    var p = Model.Page;
+}
+
+<div class="mb-6">
+    <h1 class="text-xl font-semibold text-slate-900">Audit log</h1>
+    <p class="mt-1 text-sm text-slate-500">
+        Every MCP tool call with its input and (capped, compressed, encrypted) output.
+        <span class="whitespace-nowrap">@s.EntryCount.ToString("N0") entries</span> ·
+        <span class="whitespace-nowrap">@Display.Bytes(s.DatabaseBytes) on disk</span> ·
+        <span class="whitespace-nowrap">kept @s.RetentionDays days, max @s.MaxDatabaseMb MB</span>
+        @if (s.OldestEntry is not null)
+        {
+            <span class="whitespace-nowrap">· oldest @Display.Utc(s.OldestEntry)</span>
+        }
+    </p>
+</div>
+
+@if (s.DroppedEvents > 0)
+{
+    <div class="alert alert-warning">
+        @s.DroppedEvents audit events were dropped since start because the writer could not keep up. Check the server log.
+    </div>
+}
+@if (!s.StoresOutput)
+{
+    <div class="alert alert-warning">Output storage is turned off (Audit:StoreOutput); only inputs and metadata are recorded.</div>
+}
+
+<form method="get" asp-action="Index" class="card card-body mb-6 grid gap-3 sm:grid-cols-[1fr_1fr_10rem_2fr_auto]">
+    <div>
+        <label for="token" class="label">Token</label>
+        <input id="token" name="token" value="@Model.Filter.Token" class="input" placeholder="name contains…" />
+    </div>
+    <div>
+        <label for="alias" class="label">Alias</label>
+        <input id="alias" name="alias" value="@Model.Filter.Alias" class="input font-mono" placeholder="exact alias" />
+    </div>
+    <div>
+        <label for="status" class="label">Status</label>
+        <select id="status" name="status" class="input">
+            <option value="">All</option>
+            @foreach (var status in Enum.GetValues<AuditStatus>())
+            {
+                <option value="@status" selected="@(Model.Filter.Status == status)">@status</option>
+            }
+        </select>
+    </div>
+    <div>
+        <label for="search" class="label">SQL contains</label>
+        <input id="search" name="search" value="@Model.Filter.Search" class="input font-mono" placeholder="e.g. customers" />
+    </div>
+    <div class="flex items-end gap-2">
+        <button type="submit" class="btn btn-primary">Filter</button>
+        <a asp-action="Index" class="btn btn-secondary">Reset</a>
+    </div>
+</form>
+
+@if (p.Items.Count == 0)
+{
+    <div class="card card-body text-center text-sm text-slate-500">No entries match.</div>
+}
+else
+{
+    <div class="card overflow-x-auto">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Time (UTC)</th>
+                    <th>Token</th>
+                    <th>Tool</th>
+                    <th>Alias</th>
+                    <th>Status</th>
+                    <th class="text-right">Rows</th>
+                    <th class="text-right">ms</th>
+                    <th>Input</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var e in p.Items)
+                {
+                    <tr>
+                        <td class="font-mono text-xs whitespace-nowrap">
+                            <a asp-action="Details" asp-route-id="@e.Id" class="text-indigo-700 hover:underline">@e.Timestamp.ToString("yyyy-MM-dd HH:mm:ss")</a>
+                        </td>
+                        <td class="whitespace-nowrap">@e.TokenName</td>
+                        <td class="font-mono text-xs whitespace-nowrap">@e.Tool</td>
+                        <td class="font-mono text-xs whitespace-nowrap">@(e.Alias ?? "—")</td>
+                        <td><span class="badge @Display.StatusBadge(e.Status)">@e.Status</span></td>
+                        <td class="text-right tabular-nums">@(e.RowCount?.ToString() ?? "")</td>
+                        <td class="text-right tabular-nums">@e.DurationMs</td>
+                        <td>
+                            @* A width on the inner div (not the cell) is what makes truncation work inside an auto-sized table. *@
+                            <div class="w-56 truncate font-mono text-xs text-slate-600 lg:w-64" title="@e.InputPreview">@(e.InputPreview ?? "")</div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="mt-4 flex items-center justify-between text-sm text-slate-600">
+        <span>Page @p.Page of @p.PageCount · @p.Total.ToString("N0") entries</span>
+        <div class="flex gap-2">
+            @if (p.Page > 1)
+            {
+                <a asp-action="Index" asp-all-route-data="@Model.RouteFor(p.Page - 1)" class="btn btn-secondary btn-sm">← Newer</a>
+            }
+            @if (p.Page < p.PageCount)
+            {
+                <a asp-action="Index" asp-all-route-data="@Model.RouteFor(p.Page + 1)" class="btn btn-secondary btn-sm">Older →</a>
+            }
+        </div>
+    </div>
+}

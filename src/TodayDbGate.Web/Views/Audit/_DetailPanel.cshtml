@@ -1,0 +1,8 @@
+@model AuditDetailsModel
+@* Loaded into the slide-over panel on the overview page. *@
+<div class="mb-4 flex items-center gap-3">
+    <span class="font-mono text-base font-semibold text-slate-900">@Model.Detail.Tool</span>
+    <span class="badge @Display.StatusBadge(Model.Detail.Status)">@Model.Detail.Status</span>
+    <span class="text-xs text-slate-400">#@Model.Detail.Id</span>
+</div>
+<partial name="_DetailBody" model="Model" />

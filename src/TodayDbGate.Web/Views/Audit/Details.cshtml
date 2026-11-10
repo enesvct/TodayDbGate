@@ -1,0 +1,15 @@
+@model AuditDetailsModel
+@{
+    var d = Model.Detail;
+    ViewData["Title"] = $"Audit #{d.Id}";
+}
+
+<div class="mb-6 flex flex-wrap items-center justify-between gap-3">
+    <div class="flex items-center gap-3">
+        <h1 class="text-xl font-semibold text-slate-900">@d.Tool</h1>
+        <span class="badge @Display.StatusBadge(d.Status)">@d.Status</span>
+    </div>
+    <a asp-action="Index" class="btn btn-secondary">← Audit log</a>
+</div>
+
+<partial name="_DetailBody" model="Model" />

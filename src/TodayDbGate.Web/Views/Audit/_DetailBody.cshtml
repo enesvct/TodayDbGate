@@ -1,0 +1,89 @@
+@model AuditDetailsModel
+@{
+    var d = Model.Detail;
+}
+
+<div class="card card-body mb-6">
+    <dl class="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-3">
+        <div><dt class="text-slate-500">Time</dt><dd class="font-mono">@Display.Utc(d.Timestamp)</dd></div>
+        <div><dt class="text-slate-500">Token</dt><dd>@d.TokenName <span class="text-xs text-slate-400">#@d.TokenId</span></dd></div>
+        <div><dt class="text-slate-500">Connection</dt><dd class="font-mono">@(d.Alias ?? "—")</dd></div>
+        <div><dt class="text-slate-500">Duration</dt><dd>@d.DurationMs ms</dd></div>
+        <div><dt class="text-slate-500">Rows returned</dt><dd>@(d.RowCount?.ToString() ?? "—")@(d.Truncated == true ? " (row limit reached)" : "")</dd></div>
+        <div><dt class="text-slate-500">Records affected</dt><dd>@(d.RecordsAffected?.ToString() ?? "—")</dd></div>
+    </dl>
+</div>
+
+@if (d.Input is not null)
+{
+    <h3 class="mb-2 text-sm font-semibold text-slate-900">Input</h3>
+    <pre class="code mb-2 whitespace-pre-wrap">@d.Input</pre>
+    @if (d.InputTruncated)
+    {
+        <p class="hint mb-6">Cut to the configured maximum length (Audit:MaxInputChars).</p>
+    }
+    else
+    {
+        <div class="mb-6"></div>
+    }
+}
+
+@if (d.Error is not null)
+{
+    <div class="alert alert-error"><strong>Error:</strong> @d.Error</div>
+}
+
+<h3 class="mb-2 text-sm font-semibold text-slate-900">Output</h3>
+@if (d.OutputJson is null)
+{
+    <div class="card card-body text-sm text-slate-500">No output stored for this call.</div>
+}
+else
+{
+    <p class="hint mb-2">
+        @if (Model.StoredRows is not null)
+        {
+            <span>Stored @Model.StoredRows of @Model.ReturnedRows rows returned to the client.</span>
+        }
+        <span>@Display.Bytes(d.OutputBytes ?? 0) before compression.</span>
+        @if (d.OutputTruncated)
+        {
+            <span class="font-medium text-amber-700">Shortened to fit the audit limits.</span>
+        }
+    </p>
+
+    @if (Model.Columns is not null)
+    {
+        <div class="card overflow-x-auto">
+            <table class="table">
+                <thead>
+                    <tr>
+                        @foreach (var c in Model.Columns)
+                        {
+                            <th class="normal-case">@c</th>
+                        }
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in Model.Rows!)
+                    {
+                        <tr>
+                            @foreach (var cell in row)
+                            {
+                                <td class="max-w-xs truncate font-mono text-xs @(cell.IsNull ? "text-slate-400 italic" : "")" title="@cell.Text">@cell.Text</td>
+                            }
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            @if (Model.Rows!.Count == 0)
+            {
+                <p class="px-4 py-3 text-sm text-slate-500">No rows.</p>
+            }
+        </div>
+    }
+    else
+    {
+        <pre class="code max-h-[32rem] whitespace-pre-wrap">@Model.RawOutput</pre>
+    }
+}
