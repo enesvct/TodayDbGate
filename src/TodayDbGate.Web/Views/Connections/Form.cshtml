@@ -1,0 +1,89 @@
+@model ConnectionFormModel
+@{
+    ViewData["Title"] = Model.IsEdit ? "Edit connection" : "Add connection";
+    var action = Model.IsEdit ? "Edit" : "Create";
+}
+
+<div class="mx-auto max-w-2xl">
+    <h1 class="mb-1 text-xl font-semibold text-slate-900">@ViewData["Title"]</h1>
+    <p class="mb-6 text-sm text-slate-500">
+        Credentials are encrypted before they are stored and are never shown to MCP clients.
+    </p>
+
+    <partial name="_Errors" model="Model.Errors" />
+
+    <div class="alert alert-warning">
+        <strong>Use a database user with only the rights it needs.</strong>
+        For read-only tokens, a read-only user is the real protection; the gateway's own checks are a second layer.
+    </div>
+
+    <form asp-action="@action" asp-route-id="@Model.Id" method="post" class="card card-body space-y-5" id="connection-form">
+        <div class="grid gap-5 sm:grid-cols-2">
+            <div>
+                <label asp-for="Input.AliasName" class="label">Alias</label>
+                <input asp-for="Input.AliasName" class="input font-mono" placeholder="live-postgres-db" required
+                       pattern="[a-zA-Z0-9][a-zA-Z0-9_\-]{1,99}" />
+                <p class="hint">Lowercase letters, digits, - and _. This is the only name the LLM sees.</p>
+            </div>
+            <div>
+                <label asp-for="Input.DatabaseType" class="label">Database type</label>
+                <select asp-for="Input.DatabaseType" class="input" data-db-type>
+                    <option value="@DatabaseType.PostgreSql">PostgreSQL</option>
+                    <option value="@DatabaseType.SqlServer">SQL Server</option>
+                    <option value="@DatabaseType.MySql">MySQL</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="grid gap-5 sm:grid-cols-[1fr_8rem]">
+            <div>
+                <label asp-for="Input.Host" class="label">Host</label>
+                <input asp-for="Input.Host" class="input font-mono" placeholder="db.internal.example.com" required />
+            </div>
+            <div>
+                <label asp-for="Input.Port" class="label">Port</label>
+                <input asp-for="Input.Port" type="number" min="1" max="65535" class="input font-mono" data-port />
+                <p class="hint">Empty = default</p>
+            </div>
+        </div>
+
+        <div>
+            <label asp-for="Input.Database" class="label">Database name</label>
+            <input asp-for="Input.Database" class="input font-mono" required />
+        </div>
+
+        <div class="grid gap-5 sm:grid-cols-2">
+            <div>
+                <label asp-for="Input.Username" class="label">Username</label>
+                <input asp-for="Input.Username" class="input font-mono" autocomplete="off" required />
+            </div>
+            <div>
+                <label asp-for="Input.Password" class="label">Password</label>
+                <input asp-for="Input.Password" type="password" class="input" autocomplete="new-password"
+                       placeholder="@(Model.IsEdit ? "Leave empty to keep the current password" : "")"
+                       required="@(!Model.IsEdit)" />
+            </div>
+        </div>
+
+        <label class="flex items-start gap-2 text-sm text-slate-700" data-sqlserver-only>
+            <input asp-for="Input.TrustServerCertificate" class="mt-0.5 rounded border-slate-300" />
+            <span>
+                Trust server certificate
+                <span class="block text-xs text-slate-500">SQL Server only. Needed for self-signed certificates; the connection stays encrypted but the server is not verified.</span>
+            </span>
+        </label>
+
+        <div>
+            <label asp-for="Input.Description" class="label">Description <span class="font-normal text-slate-400">(optional)</span></label>
+            <input asp-for="Input.Description" class="input" maxlength="500" />
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-5">
+            <button type="submit" class="btn btn-primary">@(Model.IsEdit ? "Save changes" : "Add connection")</button>
+            <button type="button" class="btn btn-secondary"
+                    data-test-form="@Url.Action("TestForm", new { id = Model.Id })">Test connection</button>
+            <a asp-action="Index" class="btn btn-secondary">Cancel</a>
+            <span class="text-sm" data-test-result></span>
+        </div>
+    </form>
+</div>

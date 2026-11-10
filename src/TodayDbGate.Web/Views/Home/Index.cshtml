@@ -1,0 +1,110 @@
+﻿@model OverviewModel
+@{
+    ViewData["Title"] = "Overview";
+    var configJson = $$"""
+        {
+          "mcpServers": {
+            "todaydbgate": {
+              "type": "http",
+              "url": "{{Model.McpUrl}}",
+              "headers": { "Authorization": "Bearer <your token>" }
+            }
+          }
+        }
+        """;
+    var gettingStarted = Model.ConnectionCount == 0 || Model.TokenCount == 0;
+}
+
+<h1 class="mb-6 text-xl font-semibold text-slate-900">Overview</h1>
+
+<div class="grid gap-4 sm:grid-cols-3">
+    <a asp-controller="Connections" asp-action="Index" class="card card-body block hover:border-indigo-300">
+        <div class="text-sm text-slate-500">Connections</div>
+        <div class="mt-1 text-3xl font-semibold text-slate-900">@Model.ConnectionCount</div>
+    </a>
+    <a asp-controller="Tokens" asp-action="Index" class="card card-body block hover:border-indigo-300">
+        <div class="text-sm text-slate-500">Tokens</div>
+        <div class="mt-1 text-3xl font-semibold text-slate-900">@Model.TokenCount</div>
+    </a>
+    <div class="card card-body">
+        <div class="text-sm text-slate-500">Active tokens</div>
+        <div class="mt-1 text-3xl font-semibold text-emerald-700">@Model.ActiveTokenCount</div>
+    </div>
+</div>
+
+@if (gettingStarted)
+{
+    <div class="card card-body mt-6">
+        <h2 class="font-semibold text-slate-900">Getting started</h2>
+        <ol class="mt-3 list-decimal space-y-1.5 pl-5 text-sm text-slate-700">
+            <li class="@(Model.ConnectionCount > 0 ? "text-slate-400 line-through" : "")">
+                <a asp-controller="Connections" asp-action="Create" class="font-medium text-indigo-700 hover:underline">Add a database connection</a>
+                — ideally with a database user that can only read.
+            </li>
+            <li class="@(Model.TokenCount > 0 ? "text-slate-400 line-through" : "")">
+                <a asp-controller="Tokens" asp-action="Create" class="font-medium text-indigo-700 hover:underline">Create an access token</a>
+                and choose which connections it may use.
+            </li>
+            <li>Point your MCP client at the endpoint below with that token.</li>
+        </ol>
+    </div>
+}
+
+@* Live activity: filled and kept up to date by js/live.js over server-sent events. *@
+<section id="live-feed" class="card mt-6" data-stream-url="@Url.Action("Stream", "Audit")" data-panel-url="@Url.Action("Panel", "Audit")" data-details-url="@Url.Action("Details", "Audit")">
+    <div class="flex flex-wrap items-center gap-3 border-b border-slate-100 px-5 py-4">
+        <h2 class="font-semibold text-slate-900">Live activity</h2>
+        <span class="inline-flex items-center gap-1.5 text-xs text-slate-500" data-live-state>
+            <span class="h-2 w-2 rounded-full bg-slate-300" data-live-dot></span>
+            <span data-live-label>Connecting…</span>
+        </span>
+        <div class="ml-auto flex items-center gap-2">
+            <button type="button" class="btn btn-secondary btn-sm" data-live-pause>Pause</button>
+            <a asp-controller="Audit" asp-action="Index" class="btn btn-secondary btn-sm">Full audit log</a>
+        </div>
+    </div>
+    <ul class="divide-y divide-slate-100" data-live-list></ul>
+    <p class="px-5 py-8 text-center text-sm text-slate-500" data-live-empty>
+        No MCP calls yet. They will appear here the moment a client runs one.
+    </p>
+    <script type="application/json" id="live-initial">@Html.Raw(Model.RecentJson)</script>
+</section>
+
+<details class="card mt-6 group" open="@gettingStarted">
+    <summary class="flex cursor-pointer list-none items-center justify-between px-5 py-4 font-semibold text-slate-900">
+        Connect an MCP client
+        <span class="text-xs font-normal text-slate-500 group-open:hidden">Show</span>
+    </summary>
+    <div class="space-y-4 border-t border-slate-100 px-5 py-5">
+        <p class="text-sm text-slate-600">Endpoint (Streamable HTTP). Every request must carry a token in the Authorization header.</p>
+        <div class="flex items-center gap-2">
+            <input id="mcp-url" class="input font-mono" value="@Model.McpUrl" readonly />
+            <button type="button" class="btn btn-secondary" data-copy="#mcp-url">Copy</button>
+        </div>
+        <div>
+            <div class="label">Claude Code</div>
+            <pre class="code break-all whitespace-pre-wrap">claude mcp add --transport http todaydbgate @Model.McpUrl --header "Authorization: Bearer &lt;your token&gt;"</pre>
+        </div>
+        <div>
+            <div class="label">JSON config (clients that support HTTP servers with headers)</div>
+            <pre class="code">@configJson</pre>
+        </div>
+    </div>
+</details>
+
+@* Slide-over panel with the details of one call (opened from the live feed). *@
+<div id="audit-drawer" class="fixed inset-0 z-40" role="dialog" aria-modal="true" aria-labelledby="audit-drawer-title" hidden>
+    <div class="absolute inset-0 bg-slate-900/30" data-drawer-close></div>
+    <aside class="absolute inset-y-0 right-0 flex w-full max-w-4xl flex-col bg-slate-50 shadow-2xl">
+        <div class="flex items-center gap-2 border-b border-slate-200 bg-white px-5 py-3">
+            <h2 id="audit-drawer-title" class="font-semibold text-slate-900">Call details</h2>
+            <a class="btn btn-secondary btn-sm ml-auto" data-drawer-full>Open as page</a>
+            <button type="button" class="btn btn-secondary btn-sm" data-drawer-close>Close</button>
+        </div>
+        <div class="flex-1 overflow-y-auto p-5" data-drawer-body></div>
+    </aside>
+</div>
+
+@section Scripts {
+    <script src="~/js/live.js" asp-append-version="true"></script>
+}

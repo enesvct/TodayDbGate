@@ -1,0 +1,32 @@
+@model CreatedTokenModel
+@{
+    ViewData["Title"] = "Token created";
+}
+
+<div class="mx-auto max-w-3xl space-y-6">
+    <div>
+        <h1 class="text-xl font-semibold text-slate-900">Token created: @Model.Name</h1>
+    </div>
+
+    <div class="alert alert-warning">
+        <strong>Copy the token now.</strong> Only a hash is stored, so it cannot be shown again.
+        If it is lost, create a new token and delete this one.
+    </div>
+
+    <div class="card card-body space-y-5">
+        <div>
+            <label for="token-value" class="label">Token</label>
+            <div class="flex items-center gap-2">
+                <input id="token-value" class="input font-mono" value="@Model.PlainToken" readonly data-select-on-focus />
+                <button type="button" class="btn btn-primary" data-copy="#token-value">Copy</button>
+            </div>
+        </div>
+
+        <div>
+            <div class="label">Claude Code</div>
+            <pre class="code break-all whitespace-pre-wrap">claude mcp add --transport http todaydbgate @Model.McpUrl --header "Authorization: Bearer @Model.PlainToken"</pre>
+        </div>
+    </div>
+
+    <a asp-action="Index" class="btn btn-secondary">I have copied it — back to tokens</a>
+</div>

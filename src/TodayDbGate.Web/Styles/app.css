@@ -1,0 +1,52 @@
+@import "tailwindcss";
+
+@source "../Views";
+@source "../wwwroot/js";
+
+@keyframes live-flash {
+  from { background-color: var(--color-indigo-100); }
+  to { background-color: transparent; }
+}
+
+@layer components {
+  .card { @apply rounded-xl border border-slate-200 bg-white shadow-sm; }
+  .card-body { @apply p-5 sm:p-6; }
+
+  .btn { @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60; }
+  .btn-sm { @apply px-2.5 py-1.5 text-xs; }
+  .btn-primary { @apply bg-indigo-600 text-white hover:bg-indigo-700; }
+  .btn-secondary { @apply border border-slate-300 bg-white text-slate-700 hover:bg-slate-50; }
+  .btn-danger { @apply border border-red-200 bg-white text-red-700 hover:bg-red-50; }
+
+  .label { @apply mb-1 block text-sm font-medium text-slate-700; }
+  .hint { @apply mt-1 text-xs text-slate-500; }
+  .input { @apply block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 focus:outline-none; }
+
+  .badge { @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap; }
+  .badge-green { @apply bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 ring-inset; }
+  .badge-amber { @apply bg-amber-50 text-amber-800 ring-1 ring-amber-200 ring-inset; }
+  .badge-red { @apply bg-red-50 text-red-700 ring-1 ring-red-200 ring-inset; }
+  .badge-slate { @apply bg-slate-100 text-slate-700 ring-1 ring-slate-200 ring-inset; }
+  .badge-indigo { @apply bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200 ring-inset; }
+
+  .table { @apply min-w-full divide-y divide-slate-200 text-sm; }
+  .table th { @apply bg-slate-50 px-4 py-2.5 text-left text-xs font-semibold tracking-wide text-slate-500 uppercase; }
+  .table td { @apply px-4 py-3 align-middle text-slate-700; }
+  .table tbody tr { @apply border-t border-slate-100; }
+
+  .nav-link { @apply rounded-md px-3 py-1.5 text-slate-600 hover:bg-slate-100 hover:text-slate-900; }
+  .nav-link-active { @apply bg-slate-100 font-medium text-slate-900; }
+
+  .alert { @apply mb-6 rounded-lg border px-4 py-3 text-sm; }
+  .alert-success { @apply border-emerald-200 bg-emerald-50 text-emerald-800; }
+  .alert-error { @apply border-red-200 bg-red-50 text-red-800; }
+  .alert-warning { @apply border-amber-200 bg-amber-50 text-amber-900; }
+
+  /* asp-validation-summary renders an empty container when there are no errors */
+  .validation-summary-valid { @apply hidden; }
+
+  .live-row { @apply flex w-full cursor-pointer items-center gap-3 px-5 py-2.5 text-left text-sm hover:bg-slate-50 focus:bg-indigo-50 focus:outline-none; }
+  .live-new { animation: live-flash 2.5s ease-out; }
+
+  .code { @apply block overflow-x-auto rounded-lg bg-slate-900 px-4 py-3 font-mono text-xs leading-relaxed text-slate-100; }
+}

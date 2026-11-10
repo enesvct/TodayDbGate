@@ -1,0 +1,91 @@
+@model IReadOnlyList<TokenSummary>
+@{
+    ViewData["Title"] = "Tokens";
+}
+
+<div class="mb-6 flex flex-wrap items-center justify-between gap-3">
+    <div>
+        <h1 class="text-xl font-semibold text-slate-900">Access tokens</h1>
+        <p class="mt-1 text-sm text-slate-500">Each MCP client gets its own token, limited to the connections you grant.</p>
+    </div>
+    <a asp-action="Create" class="btn btn-primary">Create token</a>
+</div>
+
+@if (Model.Count == 0)
+{
+    <div class="card card-body text-center text-sm text-slate-500">
+        No tokens yet. <a asp-action="Create" class="font-medium text-indigo-700 hover:underline">Create one</a> to connect an MCP client.
+    </div>
+}
+else
+{
+    <div class="card overflow-x-auto">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Status</th>
+                    <th>Access</th>
+                    <th>Valid through</th>
+                    <th>Last used</th>
+                    <th class="text-right">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var t in Model)
+                {
+                    <tr>
+                        <td class="whitespace-nowrap">
+                            <div class="font-medium text-slate-900">@t.Name</div>
+                            <div class="font-mono text-xs text-slate-500">@t.TokenPrefix…</div>
+                        </td>
+                        <td>
+                            @if (!t.IsActive)
+                            {
+                                <span class="badge badge-slate">Inactive</span>
+                            }
+                            else if (t.IsExpired)
+                            {
+                                <span class="badge badge-red">Expired</span>
+                            }
+                            else
+                            {
+                                <span class="badge badge-green">Active</span>
+                            }
+                        </td>
+                        <td>
+                            @if (t.Grants.Count == 0)
+                            {
+                                <span class="text-xs text-slate-400">No connections</span>
+                            }
+                            <div class="flex flex-wrap gap-1">
+                                @foreach (var g in t.Grants)
+                                {
+                                    <span class="badge @(g.AccessLevel == AccessLevel.ReadWrite ? "badge-amber" : "badge-indigo") font-mono"
+                                          title="@(g.AccessLevel == AccessLevel.ReadWrite ? "Read and write" : "Read only")">
+                                        @g.AliasName · @(g.AccessLevel == AccessLevel.ReadWrite ? "RW" : "RO")
+                                    </span>
+                                }
+                            </div>
+                        </td>
+                        <td class="text-xs whitespace-nowrap">@Display.ValidThrough(t.ExpiresAt)</td>
+                        <td class="text-xs whitespace-nowrap">@(t.LastUsedAt is null ? "Never" : Display.Utc(t.LastUsedAt))</td>
+                        <td>
+                            <div class="flex items-center justify-end gap-2">
+                                <a asp-action="Edit" asp-route-id="@t.Id" class="btn btn-secondary btn-sm">Edit</a>
+                                <form asp-action="SetActive" asp-route-id="@t.Id" method="post">
+                                    <input type="hidden" name="active" value="@(t.IsActive ? "false" : "true")" />
+                                    <button type="submit" class="btn btn-secondary btn-sm">@(t.IsActive ? "Deactivate" : "Activate")</button>
+                                </form>
+                                <form asp-action="Delete" asp-route-id="@t.Id" method="post"
+                                      data-confirm="Delete token '@t.Name'? Clients using it lose access immediately. This cannot be undone.">
+                                    <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}

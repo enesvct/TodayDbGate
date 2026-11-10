@@ -1,0 +1,51 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>@ViewData["Title"] · TodayDbGate</title>
+    <link rel="stylesheet" href="~/css/app.css" asp-append-version="true" />
+</head>
+<body class="min-h-screen bg-slate-50 text-slate-800 antialiased">
+    @{
+        string Nav(string controller) =>
+            string.Equals(ViewContext.RouteData.Values["controller"]?.ToString(), controller, StringComparison.OrdinalIgnoreCase)
+                ? "nav-link nav-link-active" : "nav-link";
+    }
+    <header class="border-b border-slate-200 bg-white">
+        <div class="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
+            <a asp-controller="Home" asp-action="Index" class="flex items-center gap-2 font-semibold text-slate-900">
+                <span class="grid h-7 w-7 place-items-center rounded-md bg-indigo-600 text-[11px] font-bold text-white">TG</span>
+                TodayDbGate
+            </a>
+            <nav class="flex gap-1 text-sm">
+                <a asp-controller="Home" asp-action="Index" class="@Nav("Home")">Overview</a>
+                <a asp-controller="Connections" asp-action="Index" class="@Nav("Connections")">Connections</a>
+                <a asp-controller="Tokens" asp-action="Index" class="@Nav("Tokens")">Tokens</a>
+                <a asp-controller="Audit" asp-action="Index" class="@Nav("Audit")">Audit</a>
+            </nav>
+            <div class="ml-auto flex items-center gap-3 text-sm">
+                <a asp-controller="Account" asp-action="ChangePassword" class="text-slate-500 hover:text-slate-800">Change password</a>
+                <form asp-controller="Account" asp-action="Logout" method="post">
+                    <button type="submit" class="btn btn-secondary btn-sm">Sign out</button>
+                </form>
+            </div>
+        </div>
+    </header>
+
+    <main class="mx-auto max-w-6xl px-4 py-8">
+        @if (TempData["Success"] is string success)
+        {
+            <div class="alert alert-success" role="status">@success</div>
+        }
+        @if (TempData["Error"] is string error)
+        {
+            <div class="alert alert-error" role="alert">@error</div>
+        }
+        @RenderBody()
+    </main>
+
+    <script src="~/js/app.js" asp-append-version="true"></script>
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

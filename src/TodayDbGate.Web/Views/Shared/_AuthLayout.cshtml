@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>@ViewData["Title"] · TodayDbGate</title>
+    <link rel="stylesheet" href="~/css/app.css" asp-append-version="true" />
+</head>
+<body class="grid min-h-screen place-items-center bg-slate-50 px-4 text-slate-800 antialiased">
+    <div class="w-full max-w-sm">
+        <div class="mb-6 flex items-center justify-center gap-2 text-lg font-semibold text-slate-900">
+            <span class="grid h-8 w-8 place-items-center rounded-md bg-indigo-600 text-xs font-bold text-white">TG</span>
+            TodayDbGate
+        </div>
+        @RenderBody()
+    </div>
+</body>
+</html>

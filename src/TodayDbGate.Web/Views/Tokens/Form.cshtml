@@ -1,0 +1,82 @@
+@model TokenFormModel
+@{
+    ViewData["Title"] = Model.IsEdit ? "Edit token" : "Create token";
+    var action = Model.IsEdit ? "Edit" : "Create";
+}
+
+<div class="mx-auto max-w-3xl">
+    <h1 class="mb-1 text-xl font-semibold text-slate-900">@ViewData["Title"]</h1>
+    <p class="mb-6 text-sm text-slate-500">
+        @(Model.IsEdit ? "Changes apply from the client's next request. The token value stays the same." : "The token value is shown once, right after you create it.")
+    </p>
+
+    <partial name="_Errors" model="Model.Errors" />
+
+    <form asp-action="@action" asp-route-id="@Model.Id" method="post" class="space-y-6">
+        <div class="card card-body grid gap-5 sm:grid-cols-[1fr_12rem]">
+            <div>
+                <label asp-for="Name" class="label">Name</label>
+                <input asp-for="Name" class="input" placeholder="claude-desktop-laptop" maxlength="100" required />
+                <p class="hint">Who or what uses this token. Shown in logs.</p>
+            </div>
+            <div>
+                <label asp-for="ExpiresOn" class="label">Valid until <span class="font-normal text-slate-400">(optional)</span></label>
+                <input asp-for="ExpiresOn" type="date" class="input" />
+                <p class="hint">Last valid day, UTC. Empty = never expires.</p>
+            </div>
+        </div>
+
+        <div class="card overflow-x-auto">
+            <div class="border-b border-slate-100 px-5 py-4">
+                <h2 class="font-semibold text-slate-900">Permissions</h2>
+                <p class="mt-0.5 text-sm text-slate-500">Choose the access level per connection. Read-write lets the client change data.</p>
+            </div>
+            @if (Model.Rows.Count == 0)
+            {
+                <p class="px-5 py-6 text-sm text-slate-500">
+                    There are no connections yet. You can create the token now and grant access later, or
+                    <a asp-controller="Connections" asp-action="Create" class="font-medium text-indigo-700 hover:underline">add a connection</a> first.
+                </p>
+            }
+            else
+            {
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Connection</th>
+                            <th class="text-center">No access</th>
+                            <th class="text-center">Read-only</th>
+                            <th class="text-center">Read-write</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @for (var i = 0; i < Model.Rows.Count; i++)
+                        {
+                            <tr>
+                                <td>
+                                    <input type="hidden" asp-for="Rows[i].ConnectionId" />
+                                    <span class="font-mono font-medium text-slate-900">@Model.Rows[i].AliasName</span>
+                                    <span class="ml-1 text-xs text-slate-500">@Display.DbType(Model.Rows[i].DatabaseType)</span>
+                                </td>
+                                <td class="text-center">
+                                    <input type="radio" asp-for="Rows[i].Level" value="@GrantLevel.None" aria-label="No access to @Model.Rows[i].AliasName" />
+                                </td>
+                                <td class="text-center">
+                                    <input type="radio" asp-for="Rows[i].Level" value="@GrantLevel.ReadOnly" aria-label="Read-only access to @Model.Rows[i].AliasName" />
+                                </td>
+                                <td class="text-center">
+                                    <input type="radio" asp-for="Rows[i].Level" value="@GrantLevel.ReadWrite" aria-label="Read-write access to @Model.Rows[i].AliasName" />
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+
+        <div class="flex gap-2">
+            <button type="submit" class="btn btn-primary">@(Model.IsEdit ? "Save changes" : "Create token")</button>
+            <a asp-action="Index" class="btn btn-secondary">Cancel</a>
+        </div>
+    </form>
+</div>

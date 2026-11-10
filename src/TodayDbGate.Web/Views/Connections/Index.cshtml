@@ -1,0 +1,67 @@
+@model IReadOnlyList<ConnectionSummary>
+@{
+    ViewData["Title"] = "Connections";
+}
+
+<div class="mb-6 flex flex-wrap items-center justify-between gap-3">
+    <div>
+        <h1 class="text-xl font-semibold text-slate-900">Connections</h1>
+        <p class="mt-1 text-sm text-slate-500">Databases the gateway can reach. MCP clients only ever see the alias.</p>
+    </div>
+    <a asp-action="Create" class="btn btn-primary">Add connection</a>
+</div>
+
+@if (Model.Count == 0)
+{
+    <div class="card card-body text-center text-sm text-slate-500">
+        No connections yet. <a asp-action="Create" class="font-medium text-indigo-700 hover:underline">Add the first one</a>.
+    </div>
+}
+else
+{
+    <div class="card overflow-x-auto">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Alias</th>
+                    <th>Type</th>
+                    <th>Server / database</th>
+                    <th>User</th>
+                    <th>Tokens</th>
+                    <th class="text-right">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var c in Model)
+                {
+                    <tr>
+                        <td>
+                            <div class="font-mono font-medium text-slate-900">@c.AliasName</div>
+                            @if (!string.IsNullOrEmpty(c.Description))
+                            {
+                                <div class="text-xs text-slate-500">@c.Description</div>
+                            }
+                        </td>
+                        <td><span class="badge badge-slate">@Display.DbType(c.DatabaseType)</span></td>
+                        <td class="font-mono text-xs">@c.Host:@c.Port / @c.Database</td>
+                        <td class="font-mono text-xs">@c.Username</td>
+                        <td>@c.TokenCount</td>
+                        <td>
+                            <div class="flex flex-wrap items-center justify-end gap-2">
+                                <span class="text-xs" data-test-result></span>
+                                <form asp-action="Test" asp-route-id="@c.Id" method="post" data-ajax-test>
+                                    <button type="submit" class="btn btn-secondary btn-sm">Test</button>
+                                </form>
+                                <a asp-action="Edit" asp-route-id="@c.Id" class="btn btn-secondary btn-sm">Edit</a>
+                                <form asp-action="Delete" asp-route-id="@c.Id" method="post"
+                                      data-confirm="Delete connection '@c.AliasName'? Tokens using it lose access immediately.">
+                                    <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
