@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/TodayDbGate.Application/TodayDbGate.Application.csproj" />
+    <Project Path="src/TodayDbGate.Domain/TodayDbGate.Domain.csproj" />
+    <Project Path="src/TodayDbGate.Infrastructure/TodayDbGate.Infrastructure.csproj" />
+    <Project Path="src/TodayDbGate.Web/TodayDbGate.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/TodayDbGate.IntegrationTests/TodayDbGate.IntegrationTests.csproj" />
+    <Project Path="tests/TodayDbGate.UnitTests/TodayDbGate.UnitTests.csproj" />
+  </Folder>
+</Solution>

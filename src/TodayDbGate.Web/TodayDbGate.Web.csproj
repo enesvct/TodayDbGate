@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <ItemGroup>
+    <ProjectReference Include="..\TodayDbGate.Infrastructure\TodayDbGate.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.14">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="ModelContextProtocol.AspNetCore" Version="2.4.0" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TailwindExe>$(MSBuildProjectDirectory)\..\..\tools\tailwindcss\v4.3.3\tailwindcss.exe</TailwindExe>
+  </PropertyGroup>
+
+  <!--
+    Rebuild wwwroot/css/app.css from Styles/app.css when the Tailwind CLI has been downloaded
+    (run scripts/tailwind.ps1 once). Without it, the committed app.css is used as is.
+  -->
+  <Target Name="TailwindBuild" BeforeTargets="BeforeBuild"
+          Condition="Exists('$(TailwindExe)') And '$(DesignTimeBuild)' != 'true'">
+    <Exec Command="&quot;$(TailwindExe)&quot; -i Styles/app.css -o wwwroot/css/app.css --minify"
+          WorkingDirectory="$(MSBuildProjectDirectory)" />
+  </Target>
+
+</Project>
