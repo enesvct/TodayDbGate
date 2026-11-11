@@ -73,7 +73,7 @@ public abstract class DbAdapterBase : IDbAdapter
 
                 while (await reader.ReadAsync(ct))
                 {
-                    if (rows.Count >= limits.MaxRows)
+                    if (limits.MaxRows > 0 && rows.Count >= limits.MaxRows)
                     {
                         truncated = true;
                         break;

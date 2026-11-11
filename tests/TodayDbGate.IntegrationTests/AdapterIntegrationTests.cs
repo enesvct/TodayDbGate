@@ -63,6 +63,11 @@ public class AdapterIntegrationTests
             Assert.Equal(2, result.Rows.Count);
             Assert.True(result.Truncated);
 
+            // MaxRows = 0 turns the limit off: every row comes back.
+            var all = await adapter.ExecuteQueryAsync(cs, $"SELECT id FROM {table}", AccessLevel.ReadOnly, Limits with { MaxRows = 0 }, default);
+            Assert.Equal(3, all.Rows.Count);
+            Assert.False(all.Truncated);
+
             await Assert.ThrowsAsync<QueryFailedException>(() =>
                 adapter.ExecuteQueryAsync(cs, $"INSERT INTO {table} VALUES (9,'x')", AccessLevel.ReadOnly, Limits, default));
 
