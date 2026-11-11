@@ -64,9 +64,11 @@ public abstract class DbAdapterBase : IDbAdapter
             var columns = new List<string>();
             var rows = new List<object?[]>();
             var truncated = false;
-            int recordsAffected;
+            var cancelled = false;
+            var recordsAffected = -1;
 
-            await using (var reader = await cmd.ExecuteReaderAsync(ct))
+            var reader = await cmd.ExecuteReaderAsync(ct);
+            try
             {
                 for (var i = 0; i < reader.FieldCount; i++)
                     columns.Add(reader.GetName(i));
@@ -84,18 +86,39 @@ public abstract class DbAdapterBase : IDbAdapter
                     rows.Add(row);
                 }
 
-                // Step through any further result sets. Errors from later statements only surface here;
-                // without this, disposing the reader would swallow them and the call would look successful.
-                while (await reader.NextResultAsync(ct)) { }
-
-                recordsAffected = reader.RecordsAffected;
+                if (truncated && accessLevel == AccessLevel.ReadOnly)
+                {
+                    // Without this the driver reads every remaining row just to throw it away, keeping the
+                    // database busy until the end or the timeout. Safe only for read-only calls: the transaction
+                    // is rolled back anyway. For read-write we keep reading, because cancelling there would
+                    // undo a write while the caller is told it succeeded.
+                    cmd.Cancel();
+                    cancelled = true;
+                }
+                else
+                {
+                    // Step through any further result sets. Errors from later statements only surface here;
+                    // without this, disposing the reader would swallow them and the call would look successful.
+                    while (await reader.NextResultAsync(ct)) { }
+                    recordsAffected = reader.RecordsAffected;
+                }
+            }
+            finally
+            {
+                try { await reader.DisposeAsync(); }
+                catch (Exception) when (cancelled) { /* the server reports the cancellation we asked for */ }
             }
 
             // Read-only: roll back whatever happened, as a second line of defence after the read-only mode.
             if (accessLevel == AccessLevel.ReadOnly)
-                await tx.RollbackAsync(ct);
+            {
+                try { await tx.RollbackAsync(ct); }
+                catch (Exception) when (cancelled) { /* some drivers already ended the transaction on cancel */ }
+            }
             else
+            {
                 await tx.CommitAsync(ct);
+            }
 
             return new QueryResult(columns, rows, truncated, recordsAffected, sw.ElapsedMilliseconds);
         }

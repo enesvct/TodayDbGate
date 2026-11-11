@@ -96,6 +96,27 @@ public class AdapterIntegrationTests
         }
     }
 
+    [IntegrationFact(PgVar)]
+    public async Task Postgres_row_limit_stops_the_server_instead_of_draining_the_rest()
+    {
+        var adapter = new PostgresAdapter();
+        var cs = Cs(PgVar);
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+
+        // 100 million rows that stream like a table scan (a single generate_series would be built in full
+        // before the first row is sent); with MaxRows = 10 only the first 10 are needed.
+        var result = await adapter.ExecuteQueryAsync(cs, "SELECT a FROM generate_series(1, 10000) a, generate_series(1, 10000) b",
+            AccessLevel.ReadOnly, new QueryLimits(MaxRows: 10, CommandTimeoutSeconds: 120), default);
+
+        Assert.Equal(10, result.Rows.Count);
+        Assert.True(result.Truncated);
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(5), $"took {sw.Elapsed.TotalSeconds:0.0} s");
+
+        // The pooled connection is still healthy afterwards.
+        var next = await adapter.ExecuteQueryAsync(cs, "SELECT 1", AccessLevel.ReadOnly, Limits, default);
+        Assert.Single(next.Rows);
+    }
+
     [IntegrationFact(MyVar)]
     public async Task MySql_read_only_reads_truncates_and_blocks_writes()
     {
@@ -124,6 +145,132 @@ public class AdapterIntegrationTests
         {
             await DropAsync(adapter, cs, table);
         }
+    }
+
+    [IntegrationFact(MyVar)]
+    public async Task MySql_row_limit_stops_the_server_instead_of_draining_the_rest()
+    {
+        var adapter = new MySqlAdapter();
+        var cs = Cs(MyVar);
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+
+        // A billion rows that stream (joining information_schema views would spend ~30 s before the first row).
+        var result = await adapter.ExecuteQueryAsync(cs,
+            "WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 1000) SELECT a.i FROM n a, n b, n c",
+            AccessLevel.ReadOnly, new QueryLimits(MaxRows: 10, CommandTimeoutSeconds: 120), default);
+
+        Assert.Equal(10, result.Rows.Count);
+        Assert.True(result.Truncated);
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(5), $"took {sw.Elapsed.TotalSeconds:0.0} s");
+        Assert.Single((await adapter.ExecuteQueryAsync(cs, "SELECT 1", AccessLevel.ReadOnly, Limits, default)).Rows);
+    }
+
+    // ---- SQL Server ----
+    // docker run -d --name tdg-mssql -e ACCEPT_EULA=Y -e "MSSQL_SA_PASSWORD=Gateway!Test2026" -p 51433:1433 mcr.microsoft.com/mssql/server:2022-latest
+    // $env:TDG_IT_SQLSERVER = "Server=localhost,51433;User ID=sa;Password=Gateway!Test2026;TrustServerCertificate=true"
+
+    private const string MsVar = "TDG_IT_SQLSERVER";
+    private const string MsReaderPassword = "Reader!Test2026";
+
+    /// <summary>
+    /// Creates database tdg_it and a login that is only in db_datareader, the setup we recommend.
+    /// Returns (admin, reader) connection strings built by the adapter itself.
+    /// </summary>
+    private static async Task<(string Admin, string Reader)> SqlServerSetupAsync()
+    {
+        var adapter = new SqlServerAdapter();
+        var sa = adapter.ParseConnectionString(Cs(MsVar));
+
+        // DDL like CREATE DATABASE cannot run inside the adapter's transaction; use a plain connection.
+        await using (var connection = new Microsoft.Data.SqlClient.SqlConnection(Cs(MsVar)))
+        {
+            await connection.OpenAsync();
+            foreach (var sql in new[]
+            {
+                "IF DB_ID('tdg_it') IS NULL CREATE DATABASE tdg_it",
+                $"IF SUSER_ID('tdg_reader') IS NULL CREATE LOGIN tdg_reader WITH PASSWORD = '{MsReaderPassword}', CHECK_POLICY = OFF",
+                "USE tdg_it; IF USER_ID('tdg_reader') IS NULL BEGIN CREATE USER tdg_reader FOR LOGIN tdg_reader; ALTER ROLE db_datareader ADD MEMBER tdg_reader; END"
+            })
+            {
+                await using var cmd = connection.CreateCommand();
+                cmd.CommandText = sql;
+                await cmd.ExecuteNonQueryAsync();
+            }
+        }
+
+        var admin = sa with { Database = "tdg_it" };
+        var reader = admin with { Username = "tdg_reader", Password = MsReaderPassword };
+        return (adapter.BuildConnectionString(admin), adapter.BuildConnectionString(reader));
+    }
+
+    [IntegrationFact(MsVar)]
+    public async Task SqlServer_reads_truncates_and_never_keeps_writes_for_read_only()
+    {
+        var adapter = new SqlServerAdapter();
+        var (admin, reader) = await SqlServerSetupAsync();
+        var table = await CreateTableAsync(adapter, admin);
+        try
+        {
+            var result = await adapter.ExecuteQueryAsync(reader, $"SELECT id, name FROM {table} ORDER BY id", AccessLevel.ReadOnly, Limits, default);
+            Assert.Equal(["id", "name"], result.Columns);
+            Assert.Equal(2, result.Rows.Count);
+            Assert.True(result.Truncated);
+
+            // Read-only login: the database itself refuses the write.
+            var denied = await Assert.ThrowsAsync<QueryFailedException>(() =>
+                adapter.ExecuteQueryAsync(reader, $"INSERT INTO {table} VALUES (9,'x')", AccessLevel.ReadOnly, Limits, default));
+            Assert.Contains("permission", denied.Message, StringComparison.OrdinalIgnoreCase);
+
+            // A second statement's error is reported, not swallowed.
+            await Assert.ThrowsAsync<QueryFailedException>(() =>
+                adapter.ExecuteQueryAsync(reader, $"SELECT 1; DELETE FROM {table}", AccessLevel.ReadOnly, Limits, default));
+
+            // SQL Server has no read-only transaction mode. Even with a login that CAN write,
+            // a read-only grant's transaction is always rolled back, so nothing is kept.
+            await adapter.ExecuteQueryAsync(admin, $"INSERT INTO {table} VALUES (8,'y')", AccessLevel.ReadOnly, Limits, default);
+            await adapter.ExecuteQueryAsync(admin, $"DELETE FROM {table}", AccessLevel.ReadOnly, Limits, default);
+            Assert.Equal(3, await CountAsync(adapter, admin, table));
+
+            // Read-write commits.
+            await adapter.ExecuteQueryAsync(admin, $"INSERT INTO {table} VALUES (4,'d')", AccessLevel.ReadWrite, Limits, default);
+            Assert.Equal(4, await CountAsync(adapter, admin, table));
+
+            var schema = await adapter.GetSchemaAsync(reader, 15, default);
+            var info = Assert.Single(schema, t => t.Name == table);
+            Assert.Equal(["id", "name"], info.Columns.Select(c => c.Name));
+        }
+        finally
+        {
+            await DropAsync(adapter, admin, table);
+        }
+    }
+
+    [IntegrationFact(MsVar)]
+    public async Task SqlServer_row_limit_stops_the_server_instead_of_draining_the_rest()
+    {
+        var adapter = new SqlServerAdapter();
+        var (_, reader) = await SqlServerSetupAsync();
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+
+        var result = await adapter.ExecuteQueryAsync(reader,
+            "SELECT TOP (100000000) a.object_id FROM sys.all_objects a CROSS JOIN sys.all_objects b CROSS JOIN sys.all_objects c",
+            AccessLevel.ReadOnly, new QueryLimits(MaxRows: 10, CommandTimeoutSeconds: 120), default);
+
+        Assert.Equal(10, result.Rows.Count);
+        Assert.True(result.Truncated);
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(5), $"took {sw.Elapsed.TotalSeconds:0.0} s");
+        Assert.Single((await adapter.ExecuteQueryAsync(reader, "SELECT 1", AccessLevel.ReadOnly, Limits, default)).Rows);
+    }
+
+    [IntegrationFact(MsVar)]
+    public async Task SqlServer_wrong_password_gives_database_unavailable()
+    {
+        var adapter = new SqlServerAdapter();
+        var details = adapter.ParseConnectionString(Cs(MsVar)) with { Password = "wrong" };
+
+        var ex = await Assert.ThrowsAsync<DatabaseUnavailableException>(() =>
+            adapter.TestConnectionAsync(adapter.BuildConnectionString(details), default));
+        Assert.Equal("Could not connect to the database.", ex.Message);
     }
 
     [IntegrationFact(PgVar)]
