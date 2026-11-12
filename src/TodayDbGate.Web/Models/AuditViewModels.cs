@@ -29,6 +29,7 @@ public sealed class AuditDetailsModel
     public int? StoredRows { get; private init; }
     public int? ReturnedRows { get; private init; }
     public bool RowLimitReached { get; private init; }
+    public IReadOnlyList<string> MaskedColumns { get; private init; } = [];
 
     /// <summary>Set for any other output (schema, connection list) or when the JSON was cut short.</summary>
     public string? RawOutput { get; private init; }
@@ -52,7 +53,10 @@ public sealed class AuditDetailsModel
                     Rows = rows.EnumerateArray().Select(r => (IReadOnlyList<AuditCell>)r.EnumerateArray().Select(ToCell).ToList()).ToList(),
                     StoredRows = root.TryGetProperty("storedRows", out var s) ? s.GetInt32() : null,
                     ReturnedRows = root.TryGetProperty("returnedRows", out var r2) ? r2.GetInt32() : null,
-                    RowLimitReached = root.TryGetProperty("rowLimitReached", out var l) && l.GetBoolean()
+                    RowLimitReached = root.TryGetProperty("rowLimitReached", out var l) && l.GetBoolean(),
+                    MaskedColumns = root.TryGetProperty("maskedColumns", out var m) && m.ValueKind == JsonValueKind.Array
+                        ? m.EnumerateArray().Select(x => x.GetString() ?? "").ToList()
+                        : []
                 };
             }
 

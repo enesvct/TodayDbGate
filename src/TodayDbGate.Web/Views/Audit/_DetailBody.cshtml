@@ -46,6 +46,10 @@ else
             <span>Stored @Model.StoredRows of @Model.ReturnedRows rows returned to the client.</span>
         }
         <span>@Display.Bytes(d.OutputBytes ?? 0) before compression.</span>
+        @if (Model.MaskedColumns.Count > 0)
+        {
+            <span class="font-medium text-indigo-700">Masked for the client: @string.Join(", ", Model.MaskedColumns).</span>
+        }
         @if (d.OutputTruncated)
         {
             <span class="font-medium text-amber-700">Shortened to fit the audit limits.</span>

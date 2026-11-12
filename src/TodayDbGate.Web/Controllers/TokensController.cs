@@ -47,6 +47,7 @@ public sealed class TokensController(TokenService tokens, ConnectionService conn
             Id = id,
             Name = token.Name,
             ExpiresOn = token.ExpiresAt is { } e ? DateOnly.FromDateTime(e.AddDays(-1)) : null,
+            CanSeeUnmasked = token.CanSeeUnmasked,
             Rows = await BuildRowsAsync(current, ct)
         });
     }

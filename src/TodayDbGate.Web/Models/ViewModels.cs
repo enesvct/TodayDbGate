@@ -47,6 +47,9 @@ public sealed class TokenFormModel
     /// <summary>Last day the token works (UTC). Empty means it never expires.</summary>
     [DataType(DataType.Date)] public DateOnly? ExpiresOn { get; set; }
 
+    /// <summary>Skip masking rules and personal-data detection for this token.</summary>
+    public bool CanSeeUnmasked { get; set; }
+
     public List<GrantRow> Rows { get; set; } = [];
     public IReadOnlyList<string> Errors { get; set; } = [];
     public bool IsEdit => Id is not null;
@@ -56,6 +59,7 @@ public sealed class TokenFormModel
         Name = Name,
         // Valid through the whole chosen day: expires at the next midnight UTC.
         ExpiresAt = ExpiresOn?.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc),
+        CanSeeUnmasked = CanSeeUnmasked,
         Grants = Rows.Where(r => r.Level != GrantLevel.None)
             .Select(r => new TokenGrantInput
             {

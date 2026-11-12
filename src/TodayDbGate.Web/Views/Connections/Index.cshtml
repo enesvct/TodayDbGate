@@ -52,6 +52,10 @@ else
                                 <form asp-action="Test" asp-route-id="@c.Id" method="post" data-ajax-test>
                                     <button type="submit" class="btn btn-secondary btn-sm">Test</button>
                                 </form>
+                                <a asp-controller="Masking" asp-action="Index" asp-route-id="@c.Id" class="btn btn-secondary btn-sm"
+                                   title="@(c.MaskingRuleCount == 0 ? "No masking rules" : $"{c.MaskingRuleCount} masking rule(s)")@(c.DetectPersonalData ? ", personal-data detection on" : ", personal-data detection off")">
+                                    Masking@(c.MaskingRuleCount > 0 ? $" ({c.MaskingRuleCount})" : "")
+                                </a>
                                 <a asp-action="Edit" asp-route-id="@c.Id" class="btn btn-secondary btn-sm">Edit</a>
                                 <form asp-action="Delete" asp-route-id="@c.Id" method="post"
                                       data-confirm="Delete connection '@c.AliasName'? Tokens using it lose access immediately.">

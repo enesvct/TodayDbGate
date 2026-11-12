@@ -52,6 +52,10 @@ else
                             {
                                 <span class="badge badge-green">Active</span>
                             }
+                            @if (t.CanSeeUnmasked)
+                            {
+                                <span class="badge badge-amber mt-1" title="Masking rules do not apply to this token">Unmasked</span>
+                            }
                         </td>
                         <td>
                             @if (t.Grants.Count == 0)

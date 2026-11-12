@@ -1,0 +1,174 @@
+@model MaskingFormModel
+@{
+    ViewData["Title"] = $"Masking · {Model.AliasName}";
+    var suggestions = Model.Tables.Sum(t => t.PendingSuggestions);
+    var columnModes = Enum.GetValues<ColumnMaskMode>();
+}
+
+<div class="mb-6 flex flex-wrap items-start justify-between gap-3">
+    <div>
+        <h1 class="text-xl font-semibold text-slate-900">Masking <span class="font-mono text-slate-500">· @Model.AliasName</span></h1>
+        <p class="mt-1 max-w-3xl text-sm text-slate-500">
+            Choose how values leave the gateway. Rules follow the real table and column of each result column,
+            so aliases (<span class="font-mono">email AS e</span>), joins, subqueries and <span class="font-mono">SELECT *</span> are covered.
+        </p>
+    </div>
+    <a asp-controller="Connections" asp-action="Index" class="btn btn-secondary">← Connections</a>
+</div>
+
+@if (Model.SchemaError is not null)
+{
+    <div class="alert alert-error">
+        <strong>The schema could not be read:</strong> @Model.SchemaError
+        Saved rules are shown below; fix the connection to see all tables.
+    </div>
+}
+
+<details class="card mb-6">
+    <summary class="cursor-pointer px-5 py-3 text-sm font-medium text-slate-700">How masking works and where it stops</summary>
+    <div class="space-y-2 border-t border-slate-100 px-5 py-4 text-sm text-slate-600">
+        <p><strong>Partial</strong> keeps a hint (<span class="font-mono">a***@@example.com</span>, <span class="font-mono">A*** Y***</span>, <span class="font-mono">*********46</span>).
+           <strong>Pseudonym</strong> gives a stable alias (<span class="font-mono">email_3f9a1c2b7d</span>): equal values get equal aliases, so the model can still group and count.
+           <strong>Redact</strong> shows <span class="font-mono">[REDACTED]</span>. <strong>Block</strong> refuses any query whose result contains a column of that table.</p>
+        <p><strong>Personal-data detection</strong> scans values that no rule covers (computed columns like <span class="font-mono">UPPER(email)</span>, UNIONs, views) for e-mail, phone, T.C. kimlik, IBAN and card numbers.
+           Set a column to <em>Never mask</em> to exempt it.</p>
+        <p class="text-amber-800">Masking works on query <em>results</em>. It does not stop filtering on a masked column
+           (<span class="font-mono">WHERE email LIKE 'a%'</span>) or reading it piece by piece (<span class="font-mono">SUBSTRING(...)</span>), and Block does not stop writes.
+           Where a column must be unreachable, remove it from the database user's rights (<span class="font-mono">GRANT SELECT (id, city) ON customers TO …</span>).</p>
+    </div>
+</details>
+
+<form asp-action="Index" asp-route-id="@Model.ConnectionId" method="post" id="masking-form">
+    <div class="card card-body mb-4">
+        <label class="flex items-start gap-3">
+            <input asp-for="DetectPersonalData" class="mt-1 rounded border-slate-300" />
+            <span>
+                <span class="font-medium text-slate-900">Detect personal data in columns without a rule</span>
+                <span class="block text-sm text-slate-500">E-mail, Turkish mobile numbers, T.C. kimlik no, IBAN and card numbers are recognised by their shape and checksum, then partially masked.</span>
+            </span>
+        </label>
+    </div>
+
+    @if (Model.Tables.Count > 0)
+    {
+        <div class="mb-4 flex flex-wrap items-center gap-2">
+            <input type="search" class="input max-w-xs" placeholder="Filter tables…" data-mask-filter aria-label="Filter tables" />
+            @if (suggestions > 0)
+            {
+                <button type="button" class="btn btn-secondary" data-mask-suggest>Apply @suggestions suggestion@(suggestions == 1 ? "" : "s")</button>
+            }
+            <button type="button" class="btn btn-secondary" data-mask-expand>Expand all</button>
+            <button type="button" class="btn btn-secondary" data-mask-collapse>Collapse all</button>
+            <span class="ml-auto text-sm text-slate-500">@Model.Tables.Count tables · <span data-mask-dirty></span></span>
+        </div>
+    }
+    else if (Model.SchemaError is null)
+    {
+        <div class="card card-body mb-4 text-sm text-slate-500">This database has no tables the connection's user can see.</div>
+    }
+
+    <div class="space-y-3">
+        @for (var i = 0; i < Model.Tables.Count; i++)
+        {
+            var t = Model.Tables[i];
+            var open = t.RuleCount > 0 || t.Missing || t.PendingSuggestions > 0;
+            <details class="card" open="@open" data-mask-table="@($"{t.Schema}.{t.Name}".ToLowerInvariant())">
+                <summary class="flex cursor-pointer flex-wrap items-center gap-2 px-5 py-3">
+                    <span class="font-mono font-medium text-slate-900">@t.Name</span>
+                    <span class="font-mono text-xs text-slate-400">@t.Schema</span>
+                    <span class="text-xs text-slate-400">@t.Columns.Count columns</span>
+                    @if (t.Mode == TableMaskMode.Block)
+                    {
+                        <span class="badge badge-red">Blocked</span>
+                    }
+                    else if (t.Mode == TableMaskMode.Redact)
+                    {
+                        <span class="badge badge-amber">All columns redacted</span>
+                    }
+                    @{ var columnRules = t.Columns.Count(c => c.Mode != ColumnMaskMode.Default); }
+                    @if (columnRules > 0)
+                    {
+                        <span class="badge badge-indigo">@columnRules masked</span>
+                    }
+                    @if (t.PendingSuggestions > 0)
+                    {
+                        <span class="badge badge-slate">@t.PendingSuggestions suggested</span>
+                    }
+                    @if (t.Missing)
+                    {
+                        <span class="badge badge-red">Not in schema any more</span>
+                    }
+                </summary>
+
+                <div class="border-t border-slate-100">
+                    <input type="hidden" name="Tables[@i].Schema" value="@t.Schema" />
+                    <input type="hidden" name="Tables[@i].Name" value="@t.Name" />
+                    <div class="flex flex-wrap items-center gap-3 bg-slate-50 px-5 py-3 text-sm">
+                        <label for="table-mode-@i" class="font-medium text-slate-700">Whole table</label>
+                        <select id="table-mode-@i" name="Tables[@i].Mode" class="input w-auto" data-mask-select data-initial="@t.Mode">
+                            <option value="@TableMaskMode.Normal" selected="@(t.Mode == TableMaskMode.Normal)">Per column (below)</option>
+                            <option value="@TableMaskMode.Redact" selected="@(t.Mode == TableMaskMode.Redact)">Redact every column</option>
+                            <option value="@TableMaskMode.Block" selected="@(t.Mode == TableMaskMode.Block)">Block the table</option>
+                        </select>
+                        <span class="text-xs text-slate-500">A column rule below wins over "Redact every column", e.g. to keep <span class="font-mono">id</span> visible.</span>
+                    </div>
+
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Column</th>
+                                <th>Type</th>
+                                <th>Masking</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @for (var j = 0; j < t.Columns.Count; j++)
+                            {
+                                var c = t.Columns[j];
+                                <tr>
+                                    <td class="font-mono text-sm text-slate-900">
+                                        <input type="hidden" name="Tables[@i].Columns[@j].Name" value="@c.Name" />
+                                        @c.Name
+                                    </td>
+                                    <td class="font-mono text-xs text-slate-500">@c.DataType</td>
+                                    <td>
+                                        <select name="Tables[@i].Columns[@j].Mode" class="input w-44 py-1.5" aria-label="Masking for @c.Name"
+                                                data-mask-select data-initial="@c.Mode" data-suggested="@(c.Suggested?.ToString() ?? "")">
+                                            @foreach (var mode in columnModes)
+                                            {
+                                                <option value="@mode" selected="@(c.Mode == mode)">@MaskingFormModel.Label(mode)</option>
+                                            }
+                                        </select>
+                                    </td>
+                                    <td class="text-xs">
+                                        @if (c.Missing)
+                                        {
+                                            <span class="badge badge-red">Not in schema</span>
+                                        }
+                                        else if (c.Suggested is { } s && c.Mode == ColumnMaskMode.Default)
+                                        {
+                                            <span class="text-slate-500">Suggested: <strong>@MaskingFormModel.Label(s)</strong></span>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </details>
+        }
+    </div>
+
+    <div class="sticky bottom-0 mt-6 -mx-4 border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur">
+        <div class="mx-auto flex max-w-6xl items-center gap-3">
+            <button type="submit" class="btn btn-primary">Save masking</button>
+            <a asp-controller="Connections" asp-action="Index" class="btn btn-secondary">Cancel</a>
+            <span class="text-sm text-slate-500">Rules apply from the next query. Tokens marked "sees unmasked data" skip them.</span>
+        </div>
+    </div>
+</form>
+
+@section Scripts {
+    <script src="~/js/masking.js" asp-append-version="true"></script>
+}
