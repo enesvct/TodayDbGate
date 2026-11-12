@@ -32,13 +32,17 @@ public static class DependencyInjection
             o.UseSqlite($"Data Source={Path.Combine(dataDir, "gateway.db")}"));
 
         services.AddSingleton<ISecretProtector, DataProtectionSecretProtector>();
-        services.AddSingleton(sp => new TokenHashKeyProvider(
-            sp.GetRequiredService<IDataProtectionProvider>(), Path.Combine(dataDir, "token-hash.key")));
-        services.AddSingleton<ITokenHasher>(sp =>
-            new HmacTokenHasher(sp.GetRequiredService<TokenHashKeyProvider>().GetKey()));
+        // Purpose strings must never change: they are part of how the key files are encrypted.
+        services.AddSingleton<ITokenHasher>(sp => new HmacTokenHasher(new ProtectedKeyFile(
+            sp.GetRequiredService<IDataProtectionProvider>(), Path.Combine(dataDir, "token-hash.key"),
+            "TodayDbGate.TokenHashKey.v1").GetKey()));
+        services.AddSingleton<IPseudonymizer>(sp => new HmacPseudonymizer(new ProtectedKeyFile(
+            sp.GetRequiredService<IDataProtectionProvider>(), Path.Combine(dataDir, "masking.key"),
+            "TodayDbGate.MaskingKey.v1").GetKey()));
 
         services.AddScoped<IConnectionRepository, ConnectionRepository>();
         services.AddScoped<ITokenRepository, TokenRepository>();
+        services.AddScoped<IMaskingRepository, MaskingRepository>();
 
         services.AddSingleton<IDbAdapter, PostgresAdapter>();
         services.AddSingleton<IDbAdapter, SqlServerAdapter>();

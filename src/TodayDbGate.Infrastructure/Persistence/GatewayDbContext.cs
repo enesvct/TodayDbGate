@@ -10,6 +10,7 @@ public class GatewayDbContext(DbContextOptions<GatewayDbContext> options) : DbCo
     public DbSet<DbConnectionEntry> Connections => Set<DbConnectionEntry>();
     public DbSet<AccessToken> Tokens => Set<AccessToken>();
     public DbSet<TokenConnection> TokenConnections => Set<TokenConnection>();
+    public DbSet<MaskingRule> MaskingRules => Set<MaskingRule>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -20,6 +21,21 @@ public class GatewayDbContext(DbContextOptions<GatewayDbContext> options) : DbCo
             e.HasIndex(x => x.AliasName).IsUnique();
             e.Property(x => x.DatabaseType).HasConversion<string>().HasMaxLength(20);
             e.Property(x => x.Description).HasMaxLength(500);
+            // No HasDefaultValue(true) here: EF would then treat an explicit false as "not set" and store true.
+            // Existing rows get true from the migration instead.
+        });
+
+        modelBuilder.Entity<MaskingRule>(e =>
+        {
+            e.ToTable("MaskingRules");
+            e.Property(x => x.SchemaName).HasMaxLength(128);
+            e.Property(x => x.TableName).HasMaxLength(128);
+            e.Property(x => x.ColumnName).HasMaxLength(128);
+            e.Property(x => x.Action).HasConversion<string>().HasMaxLength(20);
+            e.Ignore(x => x.IsTableRule);
+            e.HasIndex(x => new { x.ConnectionId, x.SchemaName, x.TableName, x.ColumnName }).IsUnique();
+            e.HasOne(x => x.Connection).WithMany(c => c.MaskingRules)
+                .HasForeignKey(x => x.ConnectionId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<AccessToken>(e =>

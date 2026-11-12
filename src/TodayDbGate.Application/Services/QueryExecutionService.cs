@@ -2,19 +2,24 @@ using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using TodayDbGate.Application.Abstractions;
 using TodayDbGate.Application.Exceptions;
+using TodayDbGate.Application.Masking;
 using TodayDbGate.Application.Models;
 using TodayDbGate.Application.Security;
+using TodayDbGate.Domain.Enums;
 
 namespace TodayDbGate.Application.Services;
 
 /// <summary>
 /// What an authenticated MCP caller can do: list its connections, read schemas and run queries.
-/// Every call is checked against the caller's grants and recorded in the audit log, input and output.
+/// Every call is checked against the caller's grants, masked according to the connection's masking rules,
+/// and recorded in the audit log (with the masked output, i.e. exactly what the caller saw).
 /// </summary>
 public sealed class QueryExecutionService(
     IConnectionRepository connections,
     IDbAdapterFactory adapters,
     ISecretProtector protector,
+    IMaskingRepository masking,
+    IPseudonymizer pseudonymizer,
     IAuditSink audit,
     GatewayOptions options,
     TimeProvider time,
@@ -41,26 +46,57 @@ public sealed class QueryExecutionService(
             QueryGuard.EnsureAllowed(sql, grant.AccessLevel, grant.DatabaseType);
 
             var (adapter, connectionString) = await LoadAsync(grant, ct);
+            var policy = await PolicyForAsync(principal, grant, ct);
+
             var result = await adapter.ExecuteQueryAsync(
                 connectionString, sql, grant.AccessLevel,
-                new QueryLimits(options.MaxRows, options.CommandTimeoutSeconds), ct);
+                new QueryLimits(options.MaxRows, options.CommandTimeoutSeconds, ResolveColumnOrigins: policy.HasRules), ct);
+
+            var outcome = MaskingEngine.Apply(result, policy, pseudonymizer);
+            if (outcome.BlockedTables.Count > 0)
+                throw new AccessDeniedException(
+                    $"The result contains data from {string.Join(", ", outcome.BlockedTables.Select(t => $"'{t}'"))}, which this token may not read.");
 
             logger.LogInformation(
-                "Query executed. Token={Token} Alias={Alias} Access={Access} Rows={Rows} Truncated={Truncated} ElapsedMs={Elapsed}",
-                principal.Name, grant.AliasName, grant.AccessLevel, result.Rows.Count, result.Truncated, result.ElapsedMs);
-            return result;
+                "Query executed. Token={Token} Alias={Alias} Access={Access} Rows={Rows} Truncated={Truncated} Masked={Masked} ElapsedMs={Elapsed}",
+                principal.Name, grant.AliasName, grant.AccessLevel, result.Rows.Count, result.Truncated,
+                outcome.Result.MaskedColumns?.Count ?? 0, result.ElapsedMs);
+            return outcome.Result;
         },
         result => (result, result.Rows.Count, result.Truncated, result.RecordsAffected >= 0 ? result.RecordsAffected : null));
 
+    /// <summary>The schema as the caller is allowed to see it: blocked tables left out, masked columns labelled.</summary>
     public Task<IReadOnlyList<TableInfo>> DescribeSchemaAsync(
         TokenPrincipal principal, string alias, CancellationToken ct = default) =>
         AuditedAsync(principal, "describe_schema", alias, null, async () =>
         {
             var grant = Resolve(principal, alias);
             var (adapter, connectionString) = await LoadAsync(grant, ct);
-            return await adapter.GetSchemaAsync(connectionString, options.CommandTimeoutSeconds, ct);
+            var tables = await adapter.GetSchemaAsync(connectionString, options.CommandTimeoutSeconds, ct);
+
+            var policy = await PolicyForAsync(principal, grant, ct);
+            if (!policy.HasRules) return tables;
+
+            return (IReadOnlyList<TableInfo>)tables
+                .Where(t => !policy.IsBlocked(t.Schema, t.Name))
+                .Select(t => t with
+                {
+                    Columns = t.Columns.Select(c => c with { Masking = Label(policy.Resolve(t.Schema, t.Name, c.Name)) }).ToList()
+                })
+                .ToList();
         },
         tables => (tables, tables.Count, null, null));
+
+    private async Task<MaskingPolicy> PolicyForAsync(TokenPrincipal principal, TokenGrant grant, CancellationToken ct) =>
+        principal.CanSeeUnmasked ? MaskingPolicy.None : await masking.GetPolicyAsync(grant.ConnectionId, ct);
+
+    private static string? Label(MaskAction? action) => action switch
+    {
+        MaskAction.Partial => "partial",
+        MaskAction.Pseudonym => "pseudonym",
+        MaskAction.Redact => "redacted",
+        _ => null
+    };
 
     /// <summary>Runs <paramref name="action"/> and records one audit event for it, whatever the outcome.</summary>
     private async Task<T> AuditedAsync<T>(

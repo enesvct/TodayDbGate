@@ -29,6 +29,9 @@ public sealed class PostgresAdapter : DbAdapterBase
 
     protected override DbConnection CreateConnection(string connectionString) => new NpgsqlConnection(connectionString);
 
+    // Npgsql only resolves table/column names from the wire metadata with KeyInfo.
+    protected override System.Data.CommandBehavior OriginBehavior => System.Data.CommandBehavior.KeyInfo;
+
     protected override async Task<DbTransaction> BeginTransactionAsync(
         DbConnection connection, AccessLevel accessLevel, CancellationToken ct)
     {

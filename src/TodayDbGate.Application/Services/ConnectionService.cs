@@ -151,7 +151,8 @@ public sealed class ConnectionService(
         return new ConnectionSummary(
             entry.Id, entry.AliasName, entry.DatabaseType,
             details?.Host ?? "(unreadable)", details?.Port ?? 0, details?.Database ?? "", details?.Username ?? "",
-            entry.Description, entry.CreatedAt, entry.TokenConnections.Count);
+            entry.Description, entry.CreatedAt, entry.TokenConnections.Count,
+            entry.MaskingRules.Count, entry.DetectPersonalData);
     }
 
     private ConnectionDetails ReadDetails(DbConnectionEntry entry) =>

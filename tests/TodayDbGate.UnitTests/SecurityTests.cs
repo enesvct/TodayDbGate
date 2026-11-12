@@ -1,4 +1,4 @@
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
 using Microsoft.AspNetCore.DataProtection;
 using TodayDbGate.Application.Security;
 using TodayDbGate.Infrastructure.Security;
@@ -56,8 +56,8 @@ public class SecurityTests
         var provider = new EphemeralDataProtectionProvider();
         try
         {
-            var first = new TokenHashKeyProvider(provider, path).GetKey();
-            var second = new TokenHashKeyProvider(provider, path).GetKey();
+            var first = new ProtectedKeyFile(provider, path, "TodayDbGate.TokenHashKey.v1").GetKey();
+            var second = new ProtectedKeyFile(provider, path, "TodayDbGate.TokenHashKey.v1").GetKey();
 
             Assert.Equal(32, first.Length);
             Assert.Equal(first, second);

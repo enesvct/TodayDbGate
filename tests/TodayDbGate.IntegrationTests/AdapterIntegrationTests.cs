@@ -273,6 +273,59 @@ public class AdapterIntegrationTests
         Assert.Equal("Could not connect to the database.", ex.Message);
     }
 
+    // ---- Column origins (what masking rules are matched against) ----
+
+    /// <summary>Aliases and joins resolve to the real table/column; computed columns have no origin.</summary>
+    private static async Task AssertColumnOriginsAsync(IDbAdapter adapter, string cs)
+    {
+        var suffix = Guid.NewGuid().ToString("N")[..6];
+        string people = "it_people_" + suffix, orders = "it_orders_" + suffix;
+        var rw = Limits with { MaxRows = 0 };
+        await adapter.ExecuteQueryAsync(cs, $"CREATE TABLE {people} (id INT PRIMARY KEY, email VARCHAR(100))", AccessLevel.ReadWrite, rw, default);
+        await adapter.ExecuteQueryAsync(cs, $"CREATE TABLE {orders} (id INT PRIMARY KEY, person_id INT)", AccessLevel.ReadWrite, rw, default);
+        await adapter.ExecuteQueryAsync(cs, $"INSERT INTO {people} VALUES (1, 'a@example.com')", AccessLevel.ReadWrite, rw, default);
+        await adapter.ExecuteQueryAsync(cs, $"INSERT INTO {orders} VALUES (10, 1)", AccessLevel.ReadWrite, rw, default);
+        try
+        {
+            var limits = new QueryLimits(0, 15, ResolveColumnOrigins: true);
+
+            var aliased = await adapter.ExecuteQueryAsync(cs, $"SELECT email AS contact FROM {people}", AccessLevel.ReadOnly, limits, default);
+            Assert.Equal(["contact"], aliased.Columns); // SQL Server's hidden key columns must not leak
+            Assert.Single(aliased.Rows[0]);
+            Assert.Equal((people, "email"), (aliased.Origins![0]!.Table.ToLowerInvariant(), aliased.Origins[0]!.Column.ToLowerInvariant()));
+
+            var joined = await adapter.ExecuteQueryAsync(cs,
+                $"SELECT x.email, y.id FROM {people} x JOIN {orders} y ON y.person_id = x.id", AccessLevel.ReadOnly, limits, default);
+            Assert.Equal(2, joined.Columns.Count);
+            Assert.Equal(people, joined.Origins![0]!.Table.ToLowerInvariant());
+            Assert.Equal(orders, joined.Origins[1]!.Table.ToLowerInvariant());
+
+            var computed = await adapter.ExecuteQueryAsync(cs, $"SELECT UPPER(email) AS up FROM {people}", AccessLevel.ReadOnly, limits, default);
+            Assert.Null(computed.Origins![0]);
+
+            // Without the flag nothing extra is fetched.
+            Assert.Null((await adapter.ExecuteQueryAsync(cs, $"SELECT email FROM {people}", AccessLevel.ReadOnly, Limits, default)).Origins);
+        }
+        finally
+        {
+            await adapter.ExecuteQueryAsync(cs, $"DROP TABLE {orders}", AccessLevel.ReadWrite, rw, default);
+            await adapter.ExecuteQueryAsync(cs, $"DROP TABLE {people}", AccessLevel.ReadWrite, rw, default);
+        }
+    }
+
+    [IntegrationFact(PgVar)]
+    public Task Postgres_reports_column_origins() => AssertColumnOriginsAsync(new PostgresAdapter(), Cs(PgVar));
+
+    [IntegrationFact(MyVar)]
+    public Task MySql_reports_column_origins() => AssertColumnOriginsAsync(new MySqlAdapter(), Cs(MyVar));
+
+    [IntegrationFact(MsVar)]
+    public async Task SqlServer_reports_column_origins()
+    {
+        var (admin, _) = await SqlServerSetupAsync();
+        await AssertColumnOriginsAsync(new SqlServerAdapter(), admin);
+    }
+
     [IntegrationFact(PgVar)]
     public async Task Wrong_password_gives_database_unavailable_with_details_only_inside()
     {

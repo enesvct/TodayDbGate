@@ -68,7 +68,8 @@ public sealed class AuditOutputCodec(IDataProtectionProvider provider, AuditOpti
         storedRows = take,
         returnedRows = r.Rows.Count,
         rowLimitReached = r.Truncated,
-        recordsAffected = r.RecordsAffected >= 0 ? r.RecordsAffected : (int?)null
+        recordsAffected = r.RecordsAffected >= 0 ? r.RecordsAffected : (int?)null,
+        maskedColumns = r.MaskedColumns is { Count: > 0 } ? r.MaskedColumns : null
     }, Json);
 
     private static byte[] Compress(byte[] data)

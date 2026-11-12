@@ -46,6 +46,9 @@ public sealed class SqlServerAdapter : DbAdapterBase
 
     protected override DbConnection CreateConnection(string connectionString) => new SqlConnection(connectionString);
 
+    // KeyInfo makes SQL Server return base table names (it also appends hidden key columns, which the base class skips).
+    protected override System.Data.CommandBehavior OriginBehavior => System.Data.CommandBehavior.KeyInfo;
+
     protected override string SchemaQuery => """
         SELECT TABLE_SCHEMA AS [Schema], TABLE_NAME AS [Table], COLUMN_NAME AS [Column],
                DATA_TYPE AS DataType, IS_NULLABLE AS IsNullable

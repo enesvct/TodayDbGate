@@ -4,17 +4,17 @@ using Microsoft.AspNetCore.DataProtection;
 namespace TodayDbGate.Infrastructure.Security;
 
 /// <summary>
-/// Loads the HMAC key for token hashing from disk, creating it on first run.
-/// The key file is itself encrypted with Data Protection.
-/// Losing this file invalidates every issued token.
+/// A 256-bit secret kept in a file, encrypted with Data Protection, created on first use.
+/// Used for the token hash key (losing it invalidates every token) and the masking key
+/// (losing it changes every pseudonym).
 /// </summary>
-public sealed class TokenHashKeyProvider
+public sealed class ProtectedKeyFile
 {
     private readonly Lazy<byte[]> _key;
 
-    public TokenHashKeyProvider(IDataProtectionProvider provider, string keyFilePath)
+    public ProtectedKeyFile(IDataProtectionProvider provider, string keyFilePath, string purpose)
     {
-        var protector = provider.CreateProtector("TodayDbGate.TokenHashKey.v1");
+        var protector = provider.CreateProtector(purpose);
         _key = new Lazy<byte[]>(() => LoadOrCreate(protector, keyFilePath));
     }
 

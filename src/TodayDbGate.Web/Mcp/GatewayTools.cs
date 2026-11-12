@@ -38,7 +38,8 @@ public sealed class GatewayTools(QueryExecutionService queries, IHttpContextAcce
 
     [McpServerTool(Name = "describe_schema", Title = "Describe database schema", ReadOnly = true, Idempotent = true, OpenWorld = false)]
     [Description("Lists tables and their columns for a connection, one table per line: " +
-                 "'schema.table: column type, column type NULL, ...'. Use it before writing queries.")]
+                 "'schema.table: column type, column type NULL, ...'. Use it before writing queries. " +
+                 "Columns marked [masked: ...] are returned masked by policy; their real values cannot be retrieved.")]
     public async Task<string> DescribeSchema(
         [Description("Connection alias from list_connections.")] string alias,
         [Description("Optional: only tables whose name contains this text (case-insensitive). Use it on large databases.")]
@@ -57,7 +58,8 @@ public sealed class GatewayTools(QueryExecutionService queries, IHttpContextAcce
         foreach (var table in tables.Take(MaxTablesListed))
         {
             sb.Append(table.Schema).Append('.').Append(table.Name).Append(": ");
-            sb.AppendJoin(", ", table.Columns.Select(c => c.IsNullable ? $"{c.Name} {c.DataType} NULL" : $"{c.Name} {c.DataType}"));
+            sb.AppendJoin(", ", table.Columns.Select(c =>
+                $"{c.Name} {c.DataType}{(c.IsNullable ? " NULL" : "")}{(c.Masking is null ? "" : $" [masked: {c.Masking}]")}"));
             sb.AppendLine();
         }
         if (tables.Count > MaxTablesListed)
@@ -70,7 +72,10 @@ public sealed class GatewayTools(QueryExecutionService queries, IHttpContextAcce
     [Description("Runs one SQL statement on a connection and returns JSON: columns, rows (arrays in column order), rowCount, " +
                  "truncated (true when the row limit was hit; add filters or LIMIT/TOP and try again) and recordsAffected for writes. " +
                  "Use the SQL dialect of the connection's database type. Only one statement per call. " +
-                 "ReadOnly connections accept only reading statements (SELECT, WITH, SHOW, EXPLAIN); writes are refused.")]
+                 "ReadOnly connections accept only reading statements (SELECT, WITH, SHOW, EXPLAIN); writes are refused. " +
+                 "Personal or sensitive values may be masked by policy (e.g. a***@example.com, email_3f9a1c2b7d, [REDACTED]); " +
+                 "maskedColumns lists the affected columns. Masked values are final: do not try to work around them. " +
+                 "Pseudonyms such as email_3f9a1c2b7d are stable, so they can still be compared, grouped and counted.")]
     public async Task<string> ExecuteQuery(
         [Description("Connection alias from list_connections.")] string alias,
         [Description("A single SQL statement.")] string sql,
@@ -85,6 +90,7 @@ public sealed class GatewayTools(QueryExecutionService queries, IHttpContextAcce
             rowCount = result.Rows.Count,
             truncated = result.Truncated,
             recordsAffected = result.RecordsAffected >= 0 ? result.RecordsAffected : (int?)null,
+            maskedColumns = result.MaskedColumns is { Count: > 0 } ? result.MaskedColumns : null,
             elapsedMs = result.ElapsedMs
         }, Json);
     }

@@ -27,6 +27,8 @@ public sealed record ConnectionSummary(
     string Username,
     string? Description,
     DateTime CreatedAt,
-    int TokenCount);
+    int TokenCount,
+    int MaskingRuleCount = 0,
+    bool DetectPersonalData = true);
 
 public sealed record ConnectionTestResult(bool Success, string Message, long ElapsedMs);

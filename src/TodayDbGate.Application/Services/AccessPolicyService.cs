@@ -30,6 +30,6 @@ public sealed class AccessPolicyService(ITokenRepository tokens, ITokenHasher ha
             .OrderBy(g => g.AliasName)
             .ToList();
 
-        return new TokenPrincipal(token.Id, token.Name, grants);
+        return new TokenPrincipal(token.Id, token.Name, grants, token.CanSeeUnmasked);
     }
 }

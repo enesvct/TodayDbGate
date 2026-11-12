@@ -39,6 +39,7 @@ public sealed class TokenService(
             IsActive = true,
             CreatedAt = time.GetUtcNow().UtcDateTime,
             ExpiresAt = ToUtc(input.ExpiresAt),
+            CanSeeUnmasked = input.CanSeeUnmasked,
             TokenConnections = DistinctGrants(input)
                 .Select(g => new TokenConnection { ConnectionId = g.ConnectionId, AccessLevel = g.AccessLevel })
                 .ToList()
@@ -59,6 +60,7 @@ public sealed class TokenService(
 
         token.Name = input.Name.Trim();
         token.ExpiresAt = ToUtc(input.ExpiresAt);
+        token.CanSeeUnmasked = input.CanSeeUnmasked;
 
         // Apply the grant changes as a diff so EF does not delete and re-insert the same key.
         var wanted = DistinctGrants(input).ToDictionary(g => g.ConnectionId, g => g.AccessLevel);
@@ -132,5 +134,6 @@ public sealed class TokenService(
         t.TokenConnections
             .OrderBy(tc => tc.Connection?.AliasName)
             .Select(tc => new TokenGrantSummary(tc.ConnectionId, tc.Connection?.AliasName ?? "?", tc.AccessLevel))
-            .ToList());
+            .ToList(),
+        t.CanSeeUnmasked);
 }

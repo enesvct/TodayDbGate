@@ -16,5 +16,12 @@ public class DbConnectionEntry
     public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
 
+    /// <summary>
+    /// Look for personal data (e-mail, phone, Turkish ID, IBAN, card numbers) in values that no rule covers,
+    /// and mask what is found.
+    /// </summary>
+    public bool DetectPersonalData { get; set; } = true;
+
     public ICollection<TokenConnection> TokenConnections { get; set; } = new List<TokenConnection>();
+    public ICollection<MaskingRule> MaskingRules { get; set; } = new List<MaskingRule>();
 }

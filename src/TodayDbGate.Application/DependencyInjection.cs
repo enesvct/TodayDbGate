@@ -17,6 +17,7 @@ public static class DependencyInjection
         services.AddScoped<TokenService>();
         services.AddScoped<AccessPolicyService>();
         services.AddScoped<QueryExecutionService>();
+        services.AddScoped<MaskingAdminService>();
         return services;
     }
 }

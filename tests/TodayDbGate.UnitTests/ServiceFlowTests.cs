@@ -7,6 +7,7 @@ using NSubstitute;
 using TodayDbGate.Application;
 using TodayDbGate.Application.Abstractions;
 using TodayDbGate.Application.Exceptions;
+using TodayDbGate.Application.Masking;
 using TodayDbGate.Application.Models;
 using TodayDbGate.Application.Services;
 using TodayDbGate.Domain.Enums;
@@ -217,7 +218,8 @@ public sealed class ServiceFlowTests : IDisposable
         factory.Get(Arg.Any<DatabaseType>()).Returns(adapter);
 
         var audit = Substitute.For<IAuditSink>();
-        var service = new QueryExecutionService(new ConnectionRepository(_db), factory, _protector, audit,
+        var service = new QueryExecutionService(new ConnectionRepository(_db), factory, _protector,
+            new MaskingRepository(_db), new HmacPseudonymizer(RandomNumberGenerator.GetBytes(32)), audit,
             new GatewayOptions(), _time, NullLogger<QueryExecutionService>.Instance);
 
         // Not granted, and nonexistent: same error, database never contacted.
@@ -246,6 +248,111 @@ public sealed class ServiceFlowTests : IDisposable
         Assert.Same(result, events[3].Output);
         Assert.Equal(1, events[3].RowCount);
         Assert.DoesNotContain(events, e => e.Error?.Contains("secret-pw") == true);
+    }
+
+    [Fact]
+    public async Task Masking_rules_apply_to_results_schema_and_audit_unless_token_may_see_unmasked()
+    {
+        var connectionId = await AddConnectionAsync("crm-db");
+        var masked = await AddTokenAsync((connectionId, AccessLevel.ReadOnly));
+        var trusted = await _tokens.CreateAsync(new TokenInput
+        {
+            Name = "trusted", CanSeeUnmasked = true,
+            Grants = [new TokenGrantInput { ConnectionId = connectionId }]
+        });
+
+        var origins = new ColumnOrigin?[] { new("public", "customers", "email"), new("public", "customers", "city") };
+        var adapter = Substitute.For<IDbAdapter>();
+        adapter.ExecuteQueryAsync(default!, default!, default, default!, default).ReturnsForAnyArgs(call =>
+            call.ArgAt<string>(1).Contains("payments")
+                ? new QueryResult(["amount"], [[10m]], false, -1, 1, [new ColumnOrigin("public", "payments", "amount")])
+                : new QueryResult(["contact", "city"], [["ali@example.com", "Ankara"]], false, -1, 1,
+                    call.ArgAt<QueryLimits>(3).ResolveColumnOrigins ? origins : null));
+        adapter.GetSchemaAsync(default!, default, default).ReturnsForAnyArgs(new List<TableInfo>
+        {
+            new("public", "customers", [new("email", "text", true), new("city", "text", true)]),
+            new("public", "payments", [new("amount", "numeric", false)])
+        });
+        var factory = Substitute.For<IDbAdapterFactory>();
+        factory.Get(Arg.Any<DatabaseType>()).Returns(adapter);
+
+        var maskingRepo = new MaskingRepository(_db);
+        var admin = new MaskingAdminService(new ConnectionRepository(_db), maskingRepo, factory, _protector, new GatewayOptions());
+        var saved = await admin.SaveAsync(connectionId, new MaskingInput
+        {
+            DetectPersonalData = true,
+            Rules =
+            [
+                new MaskingRuleInput { Schema = "public", Table = "customers", Column = "email", Action = MaskAction.Partial },
+                new MaskingRuleInput { Schema = "public", Table = "payments", Action = MaskAction.Block }
+            ]
+        });
+        Assert.True(saved.Succeeded, string.Join(", ", saved.Errors));
+
+        var audit = Substitute.For<IAuditSink>();
+        var service = new QueryExecutionService(new ConnectionRepository(_db), factory, _protector, maskingRepo,
+            new HmacPseudonymizer(RandomNumberGenerator.GetBytes(32)), audit, new GatewayOptions(), _time,
+            NullLogger<QueryExecutionService>.Instance);
+
+        var principal = (await _policy.AuthenticateAsync(masked.PlainToken))!;
+        var result = await service.ExecuteQueryAsync(principal, "crm-db", "SELECT email AS contact, city FROM customers");
+        Assert.Equal("a***@example.com", result.Rows[0][0]);
+        Assert.Equal("Ankara", result.Rows[0][1]);
+        Assert.Equal(["contact"], result.MaskedColumns);
+
+        // What the audit log keeps is what the client saw.
+        var audited = (QueryResult)audit.ReceivedCalls().Select(c => (AuditEvent)c.GetArguments()[0]!).Last().Output!;
+        Assert.Equal("a***@example.com", audited.Rows[0][0]);
+
+        await Assert.ThrowsAsync<AccessDeniedException>(() => service.ExecuteQueryAsync(principal, "crm-db", "SELECT amount FROM payments"));
+
+        var schema = await service.DescribeSchemaAsync(principal, "crm-db");
+        var table = Assert.Single(schema); // payments is hidden
+        Assert.Equal("partial", table.Columns.Single(c => c.Name == "email").Masking);
+        Assert.Null(table.Columns.Single(c => c.Name == "city").Masking);
+
+        var trustedPrincipal = (await _policy.AuthenticateAsync(trusted.Value!.PlainToken))!;
+        Assert.True(trustedPrincipal.CanSeeUnmasked);
+        var raw = await service.ExecuteQueryAsync(trustedPrincipal, "crm-db", "SELECT email AS contact, city FROM customers");
+        Assert.Equal("ali@example.com", raw.Rows[0][0]);
+        Assert.Equal(2, (await service.DescribeSchemaAsync(trustedPrincipal, "crm-db")).Count);
+    }
+
+    [Fact]
+    public async Task Masking_admin_rejects_invalid_actions_and_merges_schema_with_rules()
+    {
+        var connectionId = await AddConnectionAsync("shop");
+        var adapter = Substitute.For<IDbAdapter>();
+        adapter.GetSchemaAsync(default!, default, default).ReturnsForAnyArgs(new List<TableInfo>
+        {
+            new("public", "customers", [new("id", "int", false), new("email", "text", true)])
+        });
+        var factory = Substitute.For<IDbAdapterFactory>();
+        factory.Get(Arg.Any<DatabaseType>()).Returns(adapter);
+        var admin = new MaskingAdminService(new ConnectionRepository(_db), new MaskingRepository(_db), factory, _protector, new GatewayOptions());
+
+        var invalid = await admin.SaveAsync(connectionId, new MaskingInput
+        {
+            Rules = [new MaskingRuleInput { Table = "customers", Column = "email", Action = MaskAction.Block }]
+        });
+        Assert.False(invalid.Succeeded);
+
+        await admin.SaveAsync(connectionId, new MaskingInput
+        {
+            DetectPersonalData = false,
+            Rules =
+            [
+                new MaskingRuleInput { Schema = "public", Table = "customers", Column = "email", Action = MaskAction.Pseudonym },
+                new MaskingRuleInput { Schema = "public", Table = "old_table", Column = "ssn", Action = MaskAction.Redact }
+            ]
+        });
+
+        var editor = (await admin.GetEditorAsync(connectionId))!;
+        Assert.False(editor.DetectPersonalData);
+        var customers = editor.Tables.Single(t => t.Name == "customers");
+        Assert.Equal(MaskAction.Pseudonym, customers.Columns.Single(c => c.Name == "email").Action);
+        Assert.Equal(MaskAction.Partial, customers.Columns.Single(c => c.Name == "email").Suggested);
+        Assert.True(editor.Tables.Single(t => t.Name == "old_table").Missing); // rule kept and flagged
     }
 
     private sealed class FixedTime(DateTimeOffset now) : TimeProvider

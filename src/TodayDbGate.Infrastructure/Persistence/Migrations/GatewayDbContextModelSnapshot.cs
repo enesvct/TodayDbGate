@@ -24,6 +24,10 @@ namespace TodayDbGate.Infrastructure.Persistence.Migrations
                         .HasColumnType("INTEGER")
                         .HasColumnName("id");
 
+                    b.Property<bool>("CanSeeUnmasked")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("can_see_unmasked");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT")
                         .HasColumnName("created_at");
@@ -99,6 +103,10 @@ namespace TodayDbGate.Infrastructure.Persistence.Migrations
                         .HasColumnType("TEXT")
                         .HasColumnName("description");
 
+                    b.Property<bool>("DetectPersonalData")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("detect_personal_data");
+
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("TEXT")
                         .HasColumnName("updated_at");
@@ -109,6 +117,49 @@ namespace TodayDbGate.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("Connections", (string)null);
+                });
+
+            modelBuilder.Entity("TodayDbGate.Domain.Entities.MaskingRule", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("action");
+
+                    b.Property<string>("ColumnName")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("column_name");
+
+                    b.Property<int>("ConnectionId")
+                        .HasColumnType("INTEGER")
+                        .HasColumnName("connection_id");
+
+                    b.Property<string>("SchemaName")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("schema_name");
+
+                    b.Property<string>("TableName")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("table_name");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ConnectionId", "SchemaName", "TableName", "ColumnName")
+                        .IsUnique();
+
+                    b.ToTable("MaskingRules", (string)null);
                 });
 
             modelBuilder.Entity("TodayDbGate.Domain.Entities.TokenConnection", b =>
@@ -132,6 +183,17 @@ namespace TodayDbGate.Infrastructure.Persistence.Migrations
                     b.HasIndex("ConnectionId");
 
                     b.ToTable("TokenConnections", (string)null);
+                });
+
+            modelBuilder.Entity("TodayDbGate.Domain.Entities.MaskingRule", b =>
+                {
+                    b.HasOne("TodayDbGate.Domain.Entities.DbConnectionEntry", "Connection")
+                        .WithMany("MaskingRules")
+                        .HasForeignKey("ConnectionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Connection");
                 });
 
             modelBuilder.Entity("TodayDbGate.Domain.Entities.TokenConnection", b =>
@@ -160,6 +222,8 @@ namespace TodayDbGate.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("TodayDbGate.Domain.Entities.DbConnectionEntry", b =>
                 {
+                    b.Navigation("MaskingRules");
+
                     b.Navigation("TokenConnections");
                 });
 #pragma warning restore 612, 618

@@ -12,6 +12,7 @@ public sealed class TokenInput
 {
     public string Name { get; set; } = "";
     public DateTime? ExpiresAt { get; set; }
+    public bool CanSeeUnmasked { get; set; }
     public List<TokenGrantInput> Grants { get; set; } = [];
 }
 
@@ -26,7 +27,8 @@ public sealed record TokenSummary(
     DateTime CreatedAt,
     DateTime? ExpiresAt,
     DateTime? LastUsedAt,
-    IReadOnlyList<TokenGrantSummary> Grants);
+    IReadOnlyList<TokenGrantSummary> Grants,
+    bool CanSeeUnmasked = false);
 
 /// <summary>Returned once at creation. <see cref="PlainToken"/> is never stored and cannot be shown again.</summary>
 public sealed record CreatedToken(int Id, string PlainToken);
@@ -35,7 +37,8 @@ public sealed record CreatedToken(int Id, string PlainToken);
 public sealed record TokenGrant(int ConnectionId, string AliasName, DatabaseType DatabaseType, AccessLevel AccessLevel);
 
 /// <summary>An authenticated MCP caller.</summary>
-public sealed record TokenPrincipal(int TokenId, string Name, IReadOnlyList<TokenGrant> Grants)
+/// <param name="CanSeeUnmasked">Masking rules and personal-data detection are skipped for this caller.</param>
+public sealed record TokenPrincipal(int TokenId, string Name, IReadOnlyList<TokenGrant> Grants, bool CanSeeUnmasked = false)
 {
     public TokenGrant? FindGrant(string? alias) =>
         alias is null

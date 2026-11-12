@@ -1,3 +1,4 @@
+using System.Data;
 using System.Data.Common;
 using System.Diagnostics;
 using Dapper;
@@ -26,6 +27,31 @@ public abstract class DbAdapterBase : IDbAdapter
     /// ordered by schema, table and column position.
     /// </summary>
     protected abstract string SchemaQuery { get; }
+
+    /// <summary>
+    /// Reader behaviour that makes the driver report the base table and column of each result column.
+    /// MySQL always sends it; PostgreSQL (Npgsql) and SQL Server need KeyInfo.
+    /// </summary>
+    protected virtual CommandBehavior OriginBehavior => CommandBehavior.Default;
+
+    /// <summary>
+    /// Origin of each visible result column as the driver reports it: aliases, joins, subqueries and CTEs
+    /// resolve to the real table; computed columns and UNIONs have none (null).
+    /// </summary>
+    private static async Task<IReadOnlyList<ColumnOrigin?>> ReadOriginsAsync(DbDataReader reader, int fieldCount, CancellationToken ct)
+    {
+        var schema = (await reader.GetColumnSchemaAsync(ct)).Where(c => c.IsHidden != true).ToList();
+        var origins = new ColumnOrigin?[fieldCount];
+        for (var i = 0; i < fieldCount && i < schema.Count; i++)
+        {
+            var c = schema[i];
+            if (string.IsNullOrEmpty(c.BaseTableName)) continue;
+            // SQL Server leaves BaseColumnName empty when the column is not aliased.
+            var column = string.IsNullOrEmpty(c.BaseColumnName) ? c.ColumnName : c.BaseColumnName;
+            origins[i] = new ColumnOrigin(string.IsNullOrEmpty(c.BaseSchemaName) ? null : c.BaseSchemaName, c.BaseTableName, column);
+        }
+        return origins;
+    }
 
     /// <summary>Starts the transaction a query runs in. Override to put it in read-only mode.</summary>
     protected virtual async Task<DbTransaction> BeginTransactionAsync(
@@ -67,11 +93,18 @@ public abstract class DbAdapterBase : IDbAdapter
             var cancelled = false;
             var recordsAffected = -1;
 
-            var reader = await cmd.ExecuteReaderAsync(ct);
+            IReadOnlyList<ColumnOrigin?>? origins = null;
+
+            var reader = await cmd.ExecuteReaderAsync(limits.ResolveColumnOrigins ? OriginBehavior : CommandBehavior.Default, ct);
             try
             {
-                for (var i = 0; i < reader.FieldCount; i++)
+                // VisibleFieldCount: with KeyInfo, SQL Server appends hidden key columns we must not return.
+                var fieldCount = reader.VisibleFieldCount;
+                for (var i = 0; i < fieldCount; i++)
                     columns.Add(reader.GetName(i));
+
+                if (limits.ResolveColumnOrigins)
+                    origins = await ReadOriginsAsync(reader, fieldCount, ct);
 
                 while (await reader.ReadAsync(ct))
                 {
@@ -80,7 +113,7 @@ public abstract class DbAdapterBase : IDbAdapter
                         truncated = true;
                         break;
                     }
-                    var row = new object?[reader.FieldCount];
+                    var row = new object?[fieldCount];
                     for (var i = 0; i < row.Length; i++)
                         row[i] = ToJsonFriendly(reader.GetValue(i));
                     rows.Add(row);
@@ -120,7 +153,7 @@ public abstract class DbAdapterBase : IDbAdapter
                 await tx.CommitAsync(ct);
             }
 
-            return new QueryResult(columns, rows, truncated, recordsAffected, sw.ElapsedMilliseconds);
+            return new QueryResult(columns, rows, truncated, recordsAffected, sw.ElapsedMilliseconds, origins);
         }
         catch (DbException ex)
         {

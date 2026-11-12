@@ -14,6 +14,9 @@ public class AccessToken
     public required string TokenPrefix { get; set; }
 
     public bool IsActive { get; set; } = true;
+
+    /// <summary>Skip masking rules and personal-data detection for this token.</summary>
+    public bool CanSeeUnmasked { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? ExpiresAt { get; set; }
     public DateTime? LastUsedAt { get; set; }

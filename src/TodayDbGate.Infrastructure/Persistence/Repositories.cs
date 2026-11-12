@@ -7,7 +7,8 @@ namespace TodayDbGate.Infrastructure.Persistence;
 public sealed class ConnectionRepository(GatewayDbContext db) : IConnectionRepository
 {
     public Task<List<DbConnectionEntry>> ListAsync(CancellationToken ct) =>
-        db.Connections.AsNoTracking().Include(c => c.TokenConnections).OrderBy(c => c.AliasName).ToListAsync(ct);
+        db.Connections.AsNoTracking().Include(c => c.TokenConnections).Include(c => c.MaskingRules)
+            .AsSplitQuery().OrderBy(c => c.AliasName).ToListAsync(ct);
 
     public Task<DbConnectionEntry?> GetByIdAsync(int id, CancellationToken ct) =>
         db.Connections.FirstOrDefaultAsync(c => c.Id == id, ct);
